@@ -1,0 +1,207 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { clsx } from 'clsx';
+import { createClient } from '@/lib/supabase/client';
+
+const NAV_ITEMS = [
+  { href: '/command/dashboard', label: 'Dashboard', icon: '⬡' },
+  { href: '/command/debt', label: 'Debt Engine', icon: '⊗' },
+  { href: '/command/wealth', label: 'Wealth Engine', icon: '◈' },
+  { href: '/command/affordability', label: 'Affordability', icon: '◎' },
+  { href: '/command/coach', label: 'AI Coach', icon: '✦' },
+  { href: '/command/reports', label: 'Reports', icon: '⊟' },
+  { href: '/command/marketplace', label: 'Marketplace', icon: '⊕' },
+];
+
+interface CommandNavProps {
+  userName?: string;
+  healthScore?: number;
+}
+
+export default function CommandNav({ userName, healthScore }: CommandNavProps) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const supabase = createClient();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    window.location.href = '/command';
+  }
+
+  const scoreColor =
+    healthScore === undefined ? '#94A3B8' :
+    healthScore >= 90 ? '#00D084' :
+    healthScore >= 75 ? '#22C55E' :
+    healthScore >= 60 ? '#EAB308' :
+    healthScore >= 40 ? '#F97316' : '#EF4444';
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex flex-col w-56 xl:w-64 min-h-screen bg-surface-900 border-r border-white/5 fixed left-0 top-0 bottom-0 z-30">
+        {/* Logo */}
+        <div className="p-5 border-b border-white/5">
+          <Link href="/command" className="flex items-center gap-2.5 group">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-green to-brand-blue flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              B
+            </div>
+            <div>
+              <div className="font-bold text-white text-sm leading-none">BankDeMark</div>
+              <div className="text-[10px] text-slate-500 leading-none mt-0.5">Command</div>
+            </div>
+          </Link>
+        </div>
+
+        {/* Health Score Badge */}
+        {healthScore !== undefined && (
+          <div className="mx-4 mt-4 p-3 rounded-xl bg-white/3 border border-white/6">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide mb-1">Health Score</div>
+            <div className="flex items-center justify-between">
+              <span className="text-2xl font-bold" style={{ color: scoreColor }}>
+                {healthScore}
+              </span>
+              <div className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ color: scoreColor, background: `${scoreColor}18` }}>
+                {healthScore >= 90 ? 'Elite' : healthScore >= 75 ? 'Strong' : healthScore >= 60 ? 'Stable' : healthScore >= 40 ? 'Vulnerable' : 'Critical'}
+              </div>
+            </div>
+            <div className="mt-2 h-1 bg-white/5 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${healthScore}%`, background: scoreColor }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Nav Items */}
+        <nav className="flex-1 p-4 space-y-0.5 mt-2">
+          {NAV_ITEMS.map(item => {
+            const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={clsx(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',
+                  active
+                    ? 'bg-brand-green/10 text-brand-green border border-brand-green/20'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/4'
+                )}
+              >
+                <span className="text-base leading-none">{item.icon}</span>
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bottom */}
+        <div className="p-4 border-t border-white/5 space-y-2">
+          {userName && (
+            <div className="text-xs text-slate-500 px-1 mb-2 truncate">
+              Signed in as <span className="text-slate-400">{userName}</span>
+            </div>
+          )}
+          <Link
+            href="/command/onboarding"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-slate-300 hover:bg-white/4 transition-all"
+          >
+            ⚙ Update Profile
+          </Link>
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all"
+          >
+            ↩ Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile Header */}
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-surface-900/95 backdrop-blur-md border-b border-white/5">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/command" className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-green to-brand-blue flex items-center justify-center text-white font-bold text-xs">
+              B
+            </div>
+            <span className="font-bold text-white text-sm">BankDeMark Command</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            {healthScore !== undefined && (
+              <span className="text-sm font-bold" style={{ color: scoreColor }}>{healthScore}</span>
+            )}
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="p-1.5 rounded-lg hover:bg-white/5 transition-colors text-slate-400"
+            >
+              {mobileOpen ? '✕' : '≡'}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile Menu */}
+        {mobileOpen && (
+          <div className="bg-surface-900 border-t border-white/5 px-4 py-2 space-y-1 pb-4">
+            {NAV_ITEMS.map(item => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileOpen(false)}
+                  className={clsx(
+                    'flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all',
+                    active
+                      ? 'bg-brand-green/10 text-brand-green'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  )}
+                >
+                  <span>{item.icon}</span>
+                  {item.label}
+                </Link>
+              );
+            })}
+            <div className="pt-2 border-t border-white/5 mt-2 flex gap-2">
+              <Link
+                href="/command/onboarding"
+                onClick={() => setMobileOpen(false)}
+                className="flex-1 text-center py-2 text-xs text-slate-500 hover:text-slate-300 rounded-lg hover:bg-white/4 transition-all"
+              >
+                ⚙ Profile
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="flex-1 text-center py-2 text-xs text-red-500 hover:text-red-400 rounded-lg hover:bg-red-400/5 transition-all"
+              >
+                ↩ Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* Mobile Bottom Nav */}
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-900/98 backdrop-blur-md border-t border-white/5 px-2 py-2 flex items-center justify-around">
+        {NAV_ITEMS.slice(0, 5).map(item => {
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={clsx(
+                'flex flex-col items-center gap-1 px-2 py-1 rounded-xl transition-all',
+                active ? 'text-brand-green' : 'text-slate-500 hover:text-slate-300'
+              )}
+            >
+              <span className="text-lg leading-none">{item.icon}</span>
+              <span className="text-[9px] font-medium leading-none">{item.label.split(' ')[0]}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    </>
+  );
+}

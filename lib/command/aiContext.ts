@@ -1,0 +1,250 @@
+// ============================================================
+// BankDeMark Command — AI Coach Context Builder
+// ============================================================
+
+import type { FinancialSnapshot, FinancialMetrics, UserProfile } from './types';
+import { formatCurrency, formatPercent } from './calculations';
+import { USER_TYPE_LABELS, CREDIT_SCORE_LABELS, PRIMARY_GOAL_LABELS } from './constants';
+
+export function buildAISystemMessage(): string {
+  return `You are BankDeMark Command, a premium financial intelligence assistant inside BankDeMark.
+
+You write like ChatGPT at its best:
+clear, human, strategic, personal, readable, and deeply useful.
+
+Write responses like a world-class financial operating system.
+
+Your responses should feel:
+- strategic
+- analytical
+- premium
+- emotionally stabilizing
+- highly readable
+- intelligent
+- deeply personalized
+
+Never sound like:
+- generic ChatGPT
+- a finance blogger
+- a motivational influencer
+- a therapist
+- a corporate bank FAQ
+
+Use:
+- real bullet points
+- spacing
+- sections
+- scenario modeling
+- trajectory analysis
+- tactical prioritization
+
+Avoid:
+- giant walls of text
+- repetitive phrasing
+- markdown spam like excessive ## headings
+
+You are not a stiff dashboard report.
+You are not a generic chatbot.
+You are not a motivational finance influencer.
+You are not a licensed financial advisor.
+
+==================================================
+WRITING STYLE
+==================================================
+
+Write in natural expert prose with clean sections.
+
+Do NOT use markdown heading syntax like:
+### Heading
+## Heading
+**Heading**
+
+Instead, write section titles as plain text lines:
+
+Your Most Realistic Path
+
+The 3-Engine Model
+
+Biggest Threats To Your Goal
+
+The Highest ROI Move Right Now
+
+Use bullets like this:
+
+* simple point
+* simple point
+* simple point
+
+Use numbered steps like this:
+
+1. First move
+2. Second move
+3. Third move
+
+Use separators sparingly:
+⸻
+
+Use bold only for truly important phrases, not every label.
+
+The response should feel like a premium strategic memo, not a database report.
+
+==================================================
+RESPONSE QUALITY RULES
+==================================================
+
+Always:
+- lead with the real strategic insight
+- personalize using the user's financial profile
+- reference actual numbers when useful
+- write short paragraphs
+- use real bullets and numbered lists
+- include realistic examples
+- include a clear next move
+- add a touch of humanity without being cheesy
+
+Avoid:
+- long text dumps
+- generic tips
+- robotic dashboard labels
+- over-formatting
+- excessive bold
+- excessive disclaimers
+- fake certainty
+- guaranteed outcomes
+- specific stock picks
+- tax/legal advice
+
+==================================================
+WHEN USER ASKS ABOUT RETIRING EARLY
+==================================================
+
+Do not only talk about savings and index funds.
+
+If the user is entrepreneurial, business-owning, or has income from projects, frame the answer around:
+- cash flow
+- scalable assets
+- digital products
+- SEO
+- software
+- ecommerce
+- media
+- recurring revenue
+- reinvestment
+- investments bought with business cash flow
+
+Use a strategic model when useful, such as:
+
+The 3-Engine Model
+
+Engine 1 — Cash Flow
+Engine 2 — Scalable Asset
+Engine 3 — Investment Machine
+
+Then connect the model to their actual financial data.
+
+==================================================
+FINANCIAL PRIORITY ORDER
+==================================================
+
+Prioritize:
+1. cash flow safety
+2. emergency fund
+3. high-interest debt
+4. investing
+5. income growth
+6. scalable assets
+7. long-term wealth systems
+
+==================================================
+LEGAL SAFETY
+==================================================
+
+You are educational planning software.
+You are not a financial advisor, tax professional, lender, broker, bank, or investment manager.
+Do not guarantee outcomes.
+Do not recommend individual stocks or speculative investments.
+For tax/legal/mortgage/business structuring decisions, recommend a qualified professional.
+
+End with this only when relevant:
+This is educational guidance, not financial advice.`;
+}
+
+export function buildUserContext(
+  profile: UserProfile | null,
+  snapshot: FinancialSnapshot | null,
+  metrics: FinancialMetrics | null
+): string {
+  if (!profile && !snapshot) {
+    return 'The user has not completed their financial profile yet. Encourage them to complete onboarding for personalized guidance.';
+  }
+
+  const lines: string[] = ['## User Financial Profile\n'];
+
+  if (profile) {
+    lines.push(`**Name:** ${profile.first_name}`);
+    lines.push(`**User Type:** ${USER_TYPE_LABELS[profile.user_type] || profile.user_type}`);
+    lines.push(`**Country:** ${profile.country}${profile.region ? `, ${profile.region}` : ''}`);
+    lines.push(`**Business Owner:** ${profile.business_owner ? 'Yes' : 'No'}`);
+    lines.push('');
+  }
+
+  if (snapshot) {
+    const totalIncome = snapshot.monthly_income + (snapshot.business_revenue ?? 0);
+    lines.push('## Financial Data\n');
+    lines.push(`**Monthly Income:** ${formatCurrency(totalIncome)}`);
+    if (snapshot.business_revenue) {
+      lines.push(`  - Business Revenue: ${formatCurrency(snapshot.business_revenue)}`);
+    }
+    lines.push(`**Monthly Fixed Expenses:** ${formatCurrency(snapshot.fixed_expenses)}`);
+    lines.push(`**Monthly Variable Expenses:** ${formatCurrency(snapshot.variable_expenses)}`);
+    lines.push(`**Housing Payment:** ${formatCurrency(snapshot.housing_payment)}`);
+    lines.push(`**Total Debt:** ${formatCurrency(snapshot.total_debt)}`);
+    if (snapshot.total_debt > 0) {
+      lines.push(`**Average Debt Interest Rate:** ${snapshot.average_debt_interest}%`);
+      lines.push(`**Minimum Debt Payments:** ${formatCurrency(snapshot.minimum_debt_payment)}`);
+    }
+    lines.push(`**Savings Balance:** ${formatCurrency(snapshot.savings_balance)}`);
+    lines.push(`**Investment Balance:** ${formatCurrency(snapshot.investment_balance)}`);
+    lines.push(`**Credit Score Range:** ${CREDIT_SCORE_LABELS[snapshot.credit_score_range] || snapshot.credit_score_range}`);
+    lines.push(`**Primary Goal:** ${PRIMARY_GOAL_LABELS[snapshot.primary_goal] || snapshot.primary_goal}`);
+    if (snapshot.secondary_goal) {
+      lines.push(`**Secondary Goal:** ${PRIMARY_GOAL_LABELS[snapshot.secondary_goal] || snapshot.secondary_goal}`);
+    }
+    lines.push(`**Desired Retirement Age:** ${snapshot.desired_retirement_age}`);
+    if (snapshot.passive_income_target) {
+      lines.push(`**Monthly Passive Income Target:** ${formatCurrency(snapshot.passive_income_target)}`);
+    }
+    lines.push(`**Risk Tolerance:** ${snapshot.risk_tolerance}`);
+    lines.push('');
+  }
+
+  if (metrics) {
+    lines.push('## Calculated Metrics\n');
+    lines.push(`**Financial Health Score:** ${metrics.health_score}/100 (${metrics.health_label})`);
+    lines.push(`**Monthly Cash Flow:** ${formatCurrency(metrics.monthly_cash_flow)} ${metrics.cash_flow_negative ? '⚠️ NEGATIVE' : '✅'}`);
+    lines.push(`**Savings Rate:** ${formatPercent(metrics.savings_rate)}`);
+    lines.push(`**Emergency Runway:** ${metrics.emergency_runway_months.toFixed(1)} months (${metrics.emergency_status})`);
+    lines.push(`**Debt-to-Income Ratio:** ${formatPercent(metrics.debt_to_income_ratio)}`);
+    lines.push(`**Net Worth:** ${formatCurrency(metrics.net_worth)}`);
+    lines.push(`**FIRE Number:** ${formatCurrency(metrics.fire_number)}`);
+    lines.push(`**Retirement Gap:** ${formatCurrency(metrics.retirement_gap)}`);
+    if (metrics.debt_free_months > 0 && metrics.debt_free_months < 600) {
+      lines.push(`**Estimated Debt-Free:** ${metrics.debt_free_months} months`);
+    }
+
+    const warnings: string[] = [];
+    if (metrics.cash_flow_negative) warnings.push('NEGATIVE CASH FLOW');
+    if (metrics.dangerously_high_debt) warnings.push('DANGEROUSLY HIGH DEBT');
+    if (metrics.no_emergency_fund) warnings.push('NO EMERGENCY FUND');
+    if (metrics.near_retirement_underfunded) warnings.push('NEAR-RETIREMENT UNDERFUNDED');
+    if (warnings.length > 0) {
+      lines.push(`**Active Warnings:** ${warnings.join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  lines.push('---');
+  lines.push('Use this data to provide personalized, contextual guidance. Reference specific numbers when relevant. Always acknowledge when you are making assumptions.');
+
+  return lines.join('\n');
+}

@@ -1,0 +1,137 @@
+import { NextRequest, NextResponse } from 'next/server';
+import OpenAI from 'openai';
+import { createClient } from '@/lib/supabase/server';
+import { calcAllMetrics } from '@/lib/command/calculations';
+import { buildAISystemMessage, buildUserContext } from '@/lib/command/aiContext';
+
+// Free tier: 5 messages per session (tracked by user in production)
+const FREE_DAILY_LIMIT = 20;
+
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { message, conversationId } = body as { message: string; conversationId?: string };
+
+    if (!message || typeof message !== 'string') {
+      return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
+    }
+
+    const trimmed = message.trim();
+    if (trimmed.length === 0 || trimmed.length > 2000) {
+      return NextResponse.json({ error: 'Message must be between 1 and 2000 characters.' }, { status: 400 });
+    }
+
+    // Load user's financial context
+    const [{ data: profile }, { data: snapshot }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).single(),
+      supabase.from('financial_snapshots').select('*').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(1).single(),
+    ]);
+
+    const metrics = snapshot ? calcAllMetrics(snapshot, profile?.age) : null;
+    const userContext = buildUserContext(profile, snapshot, metrics);
+
+    // Load conversation history (up to last 10 messages for context window)
+    let historyMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    let activeConversationId = conversationId;
+
+    if (activeConversationId) {
+      const { data: history } = await supabase
+        .from('ai_messages')
+        .select('role, content')
+        .eq('conversation_id', activeConversationId)
+        .order('created_at', { ascending: true })
+        .limit(10);
+      if (history) {
+        historyMessages = history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+      }
+    } else {
+      // Create new conversation
+      const { data: newConv } = await supabase
+        .from('ai_conversations')
+        .insert({
+          user_id: user.id,
+          title: trimmed.slice(0, 80),
+        })
+        .select()
+        .single();
+      if (newConv) activeConversationId = newConv.id;
+    }
+
+    // Save user message
+    if (activeConversationId) {
+      await supabase.from('ai_messages').insert({
+        conversation_id: activeConversationId,
+        user_id: user.id,
+        role: 'user',
+        content: trimmed,
+      });
+    }
+
+    // Initialize OpenAI-compatible client
+    const openai = new OpenAI({
+      apiKey: process.env.AI_API_KEY!,
+      baseURL: process.env.AI_BASE_URL || 'https://api.openai.com/v1',
+    });
+
+    const model = process.env.AI_MODEL || 'gpt-4o-mini';
+
+    const systemMessage = buildAISystemMessage();
+    const systemWithContext = `${systemMessage}\n\n${userContext}`;
+
+    const response = await openai.chat.completions.create({
+  model,
+  stream: true,
+  messages: [
+    { role: 'system', content: systemWithContext },
+    ...historyMessages,
+    { role: 'user', content: trimmed },
+  ],
+  temperature: 0.7,
+  max_tokens: 1600,
+});
+
+    // Save assistant response
+    if (activeConversationId) {
+      await supabase.from('ai_messages').insert({
+        conversation_id: activeConversationId,
+        user_id: user.id,
+        role: 'assistant',
+        content: assistantContent,
+      });
+    }
+
+    return NextResponse.json({
+      message: assistantContent,
+      conversationId: activeConversationId,
+    });
+
+  } catch (error: any) {
+    console.error('[AI Coach] Error:', error?.message || error);
+
+    if (error?.status === 401 || error?.code === 'invalid_api_key') {
+      return NextResponse.json(
+        { error: 'AI service is not configured. Please set AI_API_KEY in your environment variables.' },
+        { status: 503 }
+      );
+    }
+
+    if (error?.status === 429) {
+      return NextResponse.json(
+        { error: 'AI service rate limit reached. Please try again in a moment.' },
+        { status: 429 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: 'An error occurred processing your request. Please try again.' },
+      { status: 500 }
+    );
+  }
+}
