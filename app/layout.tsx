@@ -6,12 +6,12 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://command.bankdemark.com"),
 
   title: {
-    default: "Command by BankDeMark",
+    default: "Command by BankDeMark | Your Financial Command Center",
     template: "%s | Command by BankDeMark",
   },
 
   description:
-    "Plan. Track. Optimize. Grow. Command is the financial command center for wealth building, debt elimination, financial intelligence, and AI-powered money decisions.",
+    "Plan. Track. Optimize. Grow. AI-powered wealth planning, debt elimination, financial health scoring, and smarter money decisions.",
 
   applicationName: "Command",
 
@@ -43,9 +43,9 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Command by BankDeMark",
-    title: "Command by BankDeMark",
+    title: "Command by BankDeMark | Your Financial Command Center",
     description:
-      "Your Financial Command Center. AI-powered wealth planning, debt optimization, goal tracking, and financial intelligence.",
+      "Plan. Track. Optimize. Grow. AI-powered wealth planning, debt elimination, financial health scoring, and smarter money decisions.",
     url: "https://command.bankdemark.com",
     images: [
       {
@@ -59,9 +59,9 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Command by BankDeMark",
+    title: "Command by BankDeMark | Your Financial Command Center",
     description:
-      "Plan. Track. Optimize. Grow. The all-in-one financial command center.",
+      "Plan. Track. Optimize. Grow. AI-powered wealth planning, debt elimination, financial health scoring, and smarter money decisions.",
     images: [
       "/command-bankdemark-financial-intelligence-dashboard-og-image.png",
     ],
