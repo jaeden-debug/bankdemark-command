@@ -1,13 +1,13 @@
 {
-  "name": "BankDeMark Command",
-  "short_name": "BankDeMark",
-  "description": "Your complete financial control center — health score, debt engine, wealth projections, and AI coach.",
-  "start_url": "/command",
+  "name": "Command by BankDeMark",
+  "short_name": "Command",
+  "description": "Your Financial Command Center",
+  "theme_color": "#0B0F19",
+  "background_color": "#0B0F19",
   "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#080C14",
-  "theme_color": "#080C14",
-  "categories": ["finance", "productivity"],
+  "orientation": "portrait",
+  "start_url": "/command/dashboard",
+  "scope": "/",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -20,20 +20,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Dashboard",
-      "short_name": "Dashboard",
-      "url": "/command/dashboard",
-      "description": "View your financial health score"
-    },
-    {
-      "name": "AI Coach",
-      "short_name": "AI Coach",
-      "url": "/command/coach",
-      "description": "Get personalized financial guidance"
     }
   ]
 }

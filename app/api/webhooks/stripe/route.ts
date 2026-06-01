@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getStripe } from '@/lib/stripe';
 import { createClient } from '@supabase/supabase-js';
 
-// Required for raw body parsing — Next.js App Router streams the body
-export const config = { api: { bodyParser: false } };
+// Stripe webhooks require raw body access. In App Router, use req.text().
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 async function getSupabaseAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
