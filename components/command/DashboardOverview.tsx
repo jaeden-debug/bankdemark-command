@@ -13,6 +13,32 @@ import RecommendationCard from './RecommendationCard';
 import ProUpgradeCard from './ProUpgradeCard';
 import LegalDisclaimer from './LegalDisclaimer';
 
+
+function ScoreTrendChart({ history }: { history: { score: number; recorded_at: string }[] }) {
+  const min = Math.max(0, Math.min(...history.map(h => h.score)) - 5);
+  const max = Math.min(100, Math.max(...history.map(h => h.score)) + 5);
+  const range = max - min || 1;
+  const W = 400, H = 56, pad = 4;
+  const pts = history.map((h, i) => {
+    const x = pad + (i / (history.length - 1)) * (W - pad * 2);
+    const y = H - pad - ((h.score - min) / range) * (H - pad * 2);
+    return `${x},${y}`;
+  });
+  const last = history[history.length - 1];
+  const first = history[0];
+  const up = last.score >= first.score;
+  const color = up ? '#00D084' : '#F87171';
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 56 }}>
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 4px ${color}80)` }} />
+      {history.map((h, i) => {
+        const [x, y] = pts[i].split(',').map(Number);
+        return <circle key={i} cx={x} cy={y} r="3" fill={color} />;
+      })}
+    </svg>
+  );
+}
+
 export default function DashboardOverview() {
   const supabase = createClient();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -20,15 +46,18 @@ export default function DashboardOverview() {
   const [metrics, setMetrics] = useState<FinancialMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scoreHistory, setScoreHistory] = useState<{ score: number; recorded_at: string }[]>([]);
 
   const loadData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
 
-    const [{ data: p }, { data: s }] = await Promise.all([
+    const [{ data: p }, { data: s }, { data: history }] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('financial_snapshots').select('*').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(1).single(),
+      supabase.from('score_history').select('score, recorded_at').eq('user_id', user.id).order('recorded_at', { ascending: true }).limit(30),
     ]);
+    if (history) setScoreHistory(history);
 
     if (p) setProfile(p);
     if (s) {
@@ -44,10 +73,33 @@ export default function DashboardOverview() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-40 glass-card rounded-xl bg-white/3" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(8)].map((_, i) => <div key={i} className="h-24 glass-card rounded-xl bg-white/3" />)}
+      <div className="p-4 lg:p-6 space-y-4">
+        {/* Score card skeleton */}
+        <div className="glass-card p-6 animate-pulse flex gap-6 items-center">
+          <div className="w-32 h-32 rounded-full bg-white/5 flex-shrink-0" />
+          <div className="flex-1 space-y-3">
+            <div className="h-3 w-24 rounded bg-white/5" />
+            <div className="h-6 w-48 rounded bg-white/5" />
+            <div className="h-3 w-64 rounded bg-white/5" />
+            <div className="h-2 w-full rounded-full bg-white/5" />
+          </div>
+        </div>
+        {/* Metric cards skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="glass-card p-4 animate-pulse space-y-2">
+              <div className="h-2 w-20 rounded bg-white/5" />
+              <div className="h-6 w-24 rounded bg-white/5" />
+              <div className="h-2 w-16 rounded bg-white/5" />
+            </div>
+          ))}
+        </div>
+        {/* Recommendations skeleton */}
+        <div className="glass-card p-5 animate-pulse space-y-3">
+          <div className="h-3 w-32 rounded bg-white/5" />
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-14 rounded-lg bg-white/5" />
+          ))}
         </div>
       </div>
     );
@@ -86,13 +138,26 @@ export default function DashboardOverview() {
             Financial snapshot — last updated {snapshot.updated_at ? new Date(snapshot.updated_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : 'today'}
           </p>
         </div>
-        <Link href="/command/onboarding" className="cmd-btn-secondary text-xs py-2 px-3 no-print">
+        <Link href="/command/profile" className="cmd-btn-secondary text-xs py-2 px-3 no-print">
           ⚙ Update Data
         </Link>
       </div>
 
       {/* Health Score */}
       <FinancialHealthScore metrics={metrics} firstName={profile?.first_name} />
+
+      {/* Score Trend Sparkline */}
+      {scoreHistory.length >= 2 && (
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Score Trend (last {scoreHistory.length} updates)</p>
+            <span className={`text-xs font-semibold ${scoreHistory[scoreHistory.length-1].score >= scoreHistory[0].score ? 'text-brand-green' : 'text-red-400'}`}>
+              {scoreHistory[scoreHistory.length-1].score >= scoreHistory[0].score ? '↑' : '↓'} {Math.abs(scoreHistory[scoreHistory.length-1].score - scoreHistory[0].score)} pts
+            </span>
+          </div>
+          <ScoreTrendChart history={scoreHistory} />
+        </div>
+      )}
 
       {/* Core Metrics Grid */}
       <div>

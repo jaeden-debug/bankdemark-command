@@ -208,6 +208,46 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Rate limiting: Free users get 5 AI messages per day ──────────────────
+    const { data: profilePlan } = await supabase
+      .from('profiles')
+      .select('plan')
+      .eq('id', user.id)
+      .single();
+
+    const isPro = profilePlan?.plan === 'pro';
+
+    if (!isPro) {
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const { data: usage } = await supabase
+        .from('ai_usage')
+        .select('count')
+        .eq('user_id', user.id)
+        .eq('used_date', today)
+        .single();
+
+      const currentCount = usage?.count ?? 0;
+      const FREE_DAILY_LIMIT = 5;
+
+      if (currentCount >= FREE_DAILY_LIMIT) {
+        return NextResponse.json(
+          {
+            error: `You've used all ${FREE_DAILY_LIMIT} free AI messages for today. Upgrade to Pro for unlimited access.`,
+            limitReached: true,
+            upgradeUrl: '/command/marketplace',
+          },
+          { status: 429 }
+        );
+      }
+
+      // Upsert usage counter
+      await supabase.from('ai_usage').upsert(
+        { user_id: user.id, used_date: today, count: currentCount + 1 },
+        { onConflict: 'user_id,used_date' }
+      );
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const responseMode = classifyPrompt(trimmed);
 
     const [{ data: profile }, { data: snapshot }] = await Promise.all([

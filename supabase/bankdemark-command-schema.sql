@@ -359,3 +359,64 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 -- updated_at triggers on all mutable tables.
 -- Indexes on all foreign keys and common query fields.
 -- Auto-profile creation trigger on auth.users insert.
+
+-- ============================================================
+-- MIGRATION: Stripe + Pro plan columns on profiles
+-- ============================================================
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS plan                  TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free','pro')),
+  ADD COLUMN IF NOT EXISTS pro_plan              TEXT,
+  ADD COLUMN IF NOT EXISTS stripe_customer_id    TEXT,
+  ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_profiles_stripe_sub ON public.profiles(stripe_subscription_id);
+
+-- ============================================================
+-- TABLE: ai_usage  (rate limiting — free tier = 5/day)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.ai_usage (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  used_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+  count      INT  NOT NULL DEFAULT 0,
+  UNIQUE(user_id, used_date)
+);
+ALTER TABLE public.ai_usage ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users read own ai_usage"   ON public.ai_usage FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users insert own ai_usage" ON public.ai_usage FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users update own ai_usage" ON public.ai_usage FOR UPDATE USING (auth.uid() = user_id);
+
+-- ============================================================
+-- TABLE: score_history  (daily snapshots for trend chart)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.score_history (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  score        INT  NOT NULL,
+  health_label TEXT,
+  recorded_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_score_history_user ON public.score_history(user_id, recorded_at DESC);
+ALTER TABLE public.score_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own score_history" ON public.score_history FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================
+-- TABLE: goals
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.goals (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  title        TEXT NOT NULL,
+  type         TEXT NOT NULL CHECK (type IN ('emergency_fund','debt_payoff','savings','investment','custom')),
+  target       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  current      NUMERIC(14,2) NOT NULL DEFAULT 0,
+  target_date  DATE,
+  notes        TEXT,
+  completed    BOOLEAN DEFAULT FALSE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_goals_user ON public.goals(user_id);
+ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own goals" ON public.goals FOR ALL USING (auth.uid() = user_id);
+CREATE TRIGGER goals_updated_at BEFORE UPDATE ON public.goals FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -453,12 +453,20 @@ export default function AICoach() {
               ⚠
             </div>
 
-            <div className="rounded-2xl rounded-tl-sm border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-2xl rounded-tl-sm border border-red-500/20 bg-red-500/8 px-4 py-3 text-sm text-red-400">
               {error}
               {error.includes('configured') && (
-                <p className="mt-1 text-xs text-red-600">
+                <p className="mt-1 text-xs text-red-500">
                   See BANKDEMARK_COMMAND_SETUP.md to configure your AI API key.
                 </p>
+              )}
+              {error.includes('free AI messages') && (
+                <a
+                  href="/command/marketplace"
+                  className="mt-2 inline-block rounded-lg bg-yellow-400/20 px-3 py-1.5 text-xs font-semibold text-yellow-300 hover:bg-yellow-400/30 transition-colors"
+                >
+                  ✦ Upgrade to Pro — Unlimited AI →
+                </a>
               )}
             </div>
           </div>

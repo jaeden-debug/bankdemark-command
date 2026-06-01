@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import PWAInstallPrompt from '@/components/command/PWAInstallPrompt';
 
 export const metadata: Metadata = {
   title: {
@@ -38,8 +39,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
         <meta name="theme-color" content="#080C14" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <PWAInstallPrompt />
+      </body>
     </html>
   );
 }

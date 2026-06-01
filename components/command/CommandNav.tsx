@@ -11,8 +11,10 @@ const NAV_ITEMS = [
   { href: '/command/debt', label: 'Debt Engine', icon: '⊗' },
   { href: '/command/wealth', label: 'Wealth Engine', icon: '◈' },
   { href: '/command/affordability', label: 'Affordability', icon: '◎' },
+  { href: '/command/goals', label: 'Goals', icon: '🎯' },
   { href: '/command/coach', label: 'AI Coach', icon: '✦' },
   { href: '/command/reports', label: 'Reports', icon: '⊟' },
+  { href: '/command/profile', label: 'Edit Profile', icon: '◉' },
   { href: '/command/marketplace', label: 'Marketplace', icon: '⊕' },
 ];
 
@@ -184,7 +186,7 @@ export default function CommandNav({ userName, healthScore }: CommandNavProps) {
       </header>
 
       {/* Mobile Bottom Nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-900/98 backdrop-blur-md border-t border-white/5 px-2 py-2 flex items-center justify-around">
+      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-surface-900/98 backdrop-blur-md border-t border-white/5 px-2 pt-2 flex items-center justify-around" style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}>
         {NAV_ITEMS.slice(0, 5).map(item => {
           const active = pathname === item.href;
           return (

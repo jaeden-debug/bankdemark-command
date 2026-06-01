@@ -186,6 +186,42 @@ export default function OnboardingForm() {
       ]);
       if (profileRes.error) throw profileRes.error;
       if (snapshotRes.error) throw snapshotRes.error;
+
+      // Sync total debt as a single "General Debt" row so DebtEngine has real data
+      const totalDebt = numField(data.total_debt);
+      if (totalDebt > 0) {
+        // Only insert if user has no debts yet (don't duplicate on re-onboard)
+        const { data: existingDebts } = await supabase
+          .from('debts')
+          .select('id')
+          .eq('user_id', userId)
+          .limit(1);
+
+        if (!existingDebts || existingDebts.length === 0) {
+          await supabase.from('debts').insert({
+            user_id: userId,
+            name: 'General Debt (from onboarding)',
+            type: 'other',
+            balance: totalDebt,
+            interest_rate: numField(data.average_debt_interest) || 0,
+            minimum_payment: numField(data.minimum_debt_payment) || 0,
+          });
+        }
+      }
+
+      // Record initial score history snapshot
+      try {
+        const { calcAllMetrics } = await import('@/lib/command/calculations');
+        const metrics = calcAllMetrics(snapshotPayload as any, parseInt(data.age) || undefined);
+        if (metrics.health_score > 0) {
+          await supabase.from('score_history').insert({
+            user_id: userId,
+            score: metrics.health_score,
+            health_label: metrics.health_label,
+          });
+        }
+      } catch {}
+
       router.push('/command/dashboard');
     } catch (err: any) {
       setError(err?.message ?? 'Failed to save. Please try again.');

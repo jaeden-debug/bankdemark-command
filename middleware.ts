@@ -10,6 +10,11 @@ type CookieToSet = {
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  // Guard: skip auth entirely if Supabase env vars aren't set (e.g. local dev without .env.local)
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -46,6 +51,8 @@ export async function middleware(request: NextRequest) {
     '/command/coach',
     '/command/reports',
     '/command/marketplace',
+    '/command/goals',
+    '/command/profile',
   ];
 
   const isProtectedPath = protectedPaths.some((path) =>

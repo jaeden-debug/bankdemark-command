@@ -109,7 +109,26 @@ export default function DebtEngine() {
   const metrics = snapshot ? calcAllMetrics(snapshot) : null;
 
   if (loading) {
-    return <div className="p-6 space-y-4 animate-pulse">{[...Array(3)].map((_, i) => <div key={i} className="h-32 glass-card rounded-xl bg-white/3" />)}</div>;
+    return (
+      <div className="p-4 lg:p-6 space-y-4">
+        <div className="glass-card p-5 animate-pulse space-y-3">
+          <div className="h-3 w-28 rounded bg-white/5" />
+          <div className="grid grid-cols-3 gap-3">
+            {[...Array(3)].map((_, i) => <div key={i} className="h-16 rounded-lg bg-white/5" />)}
+          </div>
+        </div>
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="glass-card p-5 animate-pulse space-y-2">
+            <div className="flex justify-between">
+              <div className="h-4 w-36 rounded bg-white/5" />
+              <div className="h-4 w-20 rounded bg-white/5" />
+            </div>
+            <div className="h-2 w-full rounded-full bg-white/5" />
+            <div className="h-3 w-48 rounded bg-white/5" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (!snapshot) {
