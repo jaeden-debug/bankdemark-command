@@ -33,3 +33,8 @@ next-env.d.ts
 
 # Supabase CLI scratch state (contains linked-project + pooler URL)
 supabase/.temp/
+
+# Editor/source backups must never be committed
+*.bak
+*.backup
+*.before-*

@@ -109,14 +109,25 @@ export default function BookingList({
                 )}
 
                 {owed > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => markReceived(b)}
-                    disabled={pending === b.id}
-                    className="bdm-btn-secondary bdm-btn-sm"
-                  >
-                    {pending === b.id ? 'Recording…' : 'Mark received'}
-                  </button>
+                  <div className="flex gap-2">
+                    {/* Invoicing the agency for what it owes. The invoice
+                        is for the COMMISSION; the gross value travels as
+                        reference context and never becomes revenue. */}
+                    <a
+                      href={`/b/${businessId}/invoices/new?bookingId=${b.id}`}
+                      className="bdm-btn-secondary bdm-btn-sm"
+                    >
+                      Invoice this
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => markReceived(b)}
+                      disabled={pending === b.id}
+                      className="bdm-btn-secondary bdm-btn-sm"
+                    >
+                      {pending === b.id ? 'Recording…' : 'Mark received'}
+                    </button>
+                  </div>
                 )}
               </div>
             </li>

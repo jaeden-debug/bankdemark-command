@@ -93,6 +93,7 @@ export type Database = {
       }
       ai_conversations: {
         Row: {
+          business_id: string | null
           created_at: string
           id: string
           last_context_summary: string | null
@@ -102,6 +103,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          business_id?: string | null
           created_at?: string
           id?: string
           last_context_summary?: string | null
@@ -111,6 +113,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          business_id?: string | null
           created_at?: string
           id?: string
           last_context_summary?: string | null
@@ -119,7 +122,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_messages: {
         Row: {
@@ -2175,6 +2186,47 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      zylx_approvals: {
+        Row: {
+          business_id: string
+          created_at: string
+          idempotency_key: string
+          proposal_kind: string
+          result: Json | null
+          result_id: string | null
+          result_kind: string
+          user_id: string
+        }
+        Insert: {
+          business_id: string
+          created_at?: string
+          idempotency_key: string
+          proposal_kind: string
+          result?: Json | null
+          result_id?: string | null
+          result_kind: string
+          user_id: string
+        }
+        Update: {
+          business_id?: string
+          created_at?: string
+          idempotency_key?: string
+          proposal_kind?: string
+          result?: Json | null
+          result_id?: string | null
+          result_kind?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zylx_approvals_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
             referencedColumns: ["id"]
           },
         ]

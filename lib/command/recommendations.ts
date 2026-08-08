@@ -253,7 +253,7 @@ export function generateRecommendations(
       description:
         'As a freelancer, no taxes are withheld from your income. Save 25–35% of every payment in a separate account to cover income tax and CPP/EI obligations.',
       action_label: 'See AI Coach for guidance',
-      action_href: '/command/coach',
+      action_href: '/command/portfolio',
       icon: '💼',
     });
   }

@@ -55,8 +55,8 @@ export default function PriorityStack({ snapshot, metrics }: PriorityStackProps)
         </ol>
 
         <div className="mt-5 pt-4 border-t border-white/6 flex flex-wrap gap-2">
-          <Link href="/command/coach" className="cmd-btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
-            <span>✦</span> Ask AI Coach for Next Step
+          <Link href="/command/portfolio" className="cmd-btn-secondary text-xs py-2 px-3 inline-flex items-center gap-1.5">
+            <span>✦</span> Ask Zylx for Next Step
           </Link>
           <Link href="/command/debt" className="cmd-btn-ghost text-xs py-2 px-3">
             Debt Engine →

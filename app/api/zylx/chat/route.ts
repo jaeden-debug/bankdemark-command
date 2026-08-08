@@ -15,7 +15,7 @@ import OpenAI from 'openai';
 import { requireBusiness } from '@/lib/services/context';
 import { ServiceError, logError, logEvent, toServiceError, unwrapMaybe } from '@/lib/services/errors';
 import { checkQuota, isEnabled, planFor } from '@/lib/services/entitlements';
-import { executeTool, toolsForContext } from '@/lib/zylx/tools';
+import { executeTool, toolsForContext, TOOL_DEFINITIONS } from '@/lib/zylx/tools';
 import { buildSystemPrompt } from '@/lib/zylx/prompt';
 import { recordAudit } from '@/lib/services/audit';
 
@@ -90,24 +90,46 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Conversation ─────────────────────────────────────────
+    //
+    // A conversation belongs to a user AND a business. Both must match
+    // or we start a fresh thread. Without the business check, a thread
+    // begun under one business replays its figures — real amounts, in
+    // prior assistant turns — into another business's prompt.
+    //
+    // Legacy rows (business_id IS NULL) predate scoping and are never
+    // adopted into a business thread.
     let conversationId = body.conversationId ?? null;
     if (conversationId) {
       const existing = unwrapMaybe(
         await ctx.db
           .from('ai_conversations')
-          .select('id')
+          .select('id, business_id')
           .eq('id', conversationId)
           .eq('user_id', ctx.userId)
+          .eq('business_id', ctx.businessId)
           .single(),
         'load that conversation'
-      );
-      if (!existing) conversationId = null;
+      ) as { id: string; business_id: string | null } | null;
+
+      if (!existing) {
+        logEvent('zylx.conversation_rejected', {
+          requestId,
+          businessId: ctx.businessId,
+          userId: ctx.userId,
+          reason: 'not owned by this user and business',
+        });
+        conversationId = null;
+      }
     }
     if (!conversationId) {
       const created = unwrapMaybe(
         await ctx.db
           .from('ai_conversations')
-          .insert({ user_id: ctx.userId, title: message.slice(0, 80) })
+          .insert({
+            user_id: ctx.userId,
+            business_id: ctx.businessId,
+            title: message.slice(0, 80),
+          })
           .select('id')
           .single(),
         'start a conversation'
@@ -119,6 +141,7 @@ export async function POST(req: NextRequest) {
       .from('ai_messages')
       .select('role, content')
       .eq('conversation_id', conversationId!)
+      .eq('user_id', ctx.userId)
       .order('created_at', { ascending: false })
       .limit(16);
 
@@ -152,7 +175,13 @@ export async function POST(req: NextRequest) {
       accountCount: accountCount ?? 0,
       transactionCount: transactionCount ?? 0,
       hasBookings: (bookingCount ?? 0) > 0,
-      webSearchEnabled: isEnabled(plan, 'web_search'),
+      // The RUNTIME registry is authoritative, not the plan flag. A plan
+      // may grant `web_search` before any search tool exists; claiming the
+      // capability without one is how a model ends up inventing a CRA
+      // citation. Entitlement AND implementation must both be true.
+      webSearchEnabled:
+        isEnabled(plan, 'web_search') &&
+        TOOL_DEFINITIONS.some((t) => t.capability === 'web_search'),
       writesEnabled: isEnabled(plan, 'ai_writes') && ctx.role !== 'viewer',
       today: new Date().toISOString().slice(0, 10),
     });

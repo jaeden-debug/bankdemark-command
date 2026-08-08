@@ -323,7 +323,7 @@ export default function DashboardOverview() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { href: '/command/reports', label: 'Monthly Report', icon: '⊟', desc: 'Full financial summary' },
-          { href: '/command/coach', label: 'Ask AI Coach', icon: '✦', desc: 'Get personalized advice' },
+          { href: '/command/portfolio', label: 'Ask Zylx', icon: '✦', desc: 'Ask about your business' },
           { href: '/command/affordability', label: 'Affordability Check', icon: '◎', desc: 'Can I afford this?' },
           { href: '/command/marketplace', label: 'Product Tools', icon: '⊕', desc: 'Compare financial products' },
         ].map(link => (

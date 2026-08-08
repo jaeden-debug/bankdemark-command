@@ -38,8 +38,45 @@ import { formatMinor } from '@/lib/domain/money';
 import { computeBrandPerformance } from '@/lib/domain/ledger';
 import { TRANSACTION_KINDS, type TransactionKind } from '@/lib/domain/semantics';
 import { isEnabled } from '@/lib/services/entitlements';
+import { listTransactions } from '@/lib/services/transactions';
+import { getPortfolio } from '@/lib/services/businesses';
+import { generateProfitAndLoss } from '@/lib/services/reports';
+import { assertTransactionsOwned } from '@/lib/services/ownership';
+import {
+  listInvoices,
+  getInvoice,
+  getOutstandingInvoices,
+  getOverdueInvoices,
+  getARPosition,
+  listTaxRates,
+} from '@/lib/services/invoices';
+import { daysOverdue, computeInvoiceTotals } from '@/lib/domain/invoice';
 
-export type ToolRisk = 'read' | 'propose';
+/**
+ * Server-authoritative risk tier. The model does NOT declare this and
+ * cannot influence it — the registry below is the only source, and the
+ * approval route enforces it.
+ *
+ *   read            no mutation
+ *   low_write       reversible, organisational (notes, tags, drafts)
+ *   financial_write changes a financial record or classification
+ *   high_impact     destructive, bulk-destructive, external, ownership,
+ *                   tax configuration, or money movement
+ *
+ * `propose` is retained as an alias for financial_write proposals so the
+ * concurrently-developed invoice tools keep working unchanged.
+ */
+export type ToolRisk = 'read' | 'low_write' | 'propose' | 'financial_write' | 'high_impact';
+
+/** Tiers that may never be executed directly by the model, only proposed. */
+export const REQUIRES_USER_APPROVAL: ReadonlySet<ToolRisk> = new Set<ToolRisk>([
+  'propose',
+  'financial_write',
+  'high_impact',
+]);
+
+/** Tiers no tool may currently declare. Nothing high-impact is exposed. */
+export const FORBIDDEN_TIERS: ReadonlySet<ToolRisk> = new Set<ToolRisk>(['high_impact'])
 
 export interface ToolDefinition {
   name: string;
@@ -188,6 +225,154 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       additionalProperties: false,
     },
   },
+
+  // ── Invoicing ─────────────────────────────────────────────
+  {
+    name: 'get_outstanding_invoices',
+    description:
+      'Every invoice with money still owed, newest first, plus the total receivable per currency. Use for "who owes me money?" or "what is outstanding?".',
+    risk: 'read',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_overdue_invoices',
+    description:
+      'Invoices past their due date with a balance remaining, and how many days late each one is. Use for "what is overdue?" or "who is late paying me?".',
+    risk: 'read',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_invoices',
+    description:
+      'List invoices, optionally filtered by status, client or date range. Use for "how much did I invoice in July?" or "show me draft invoices".',
+    risk: 'read',
+    parameters: {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['draft', 'issued', 'sent', 'viewed', 'partially_paid', 'paid', 'overdue', 'void', 'outstanding', 'all'],
+        },
+        client_name: { type: 'string', description: 'Filter to one client by name.' },
+        from: { type: 'string', description: 'Issue date from, YYYY-MM-DD.' },
+        to: { type: 'string', description: 'Issue date to, YYYY-MM-DD.' },
+        limit: { type: 'number', description: 'Max rows. Defaults to 25.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_invoice',
+    description:
+      'Everything about one invoice: its lines, payments, reference fields, full history, and the booking it came from. Use for "why is invoice X overdue?" or "did ABC123 get paid?".',
+    risk: 'read',
+    parameters: {
+      type: 'object',
+      properties: {
+        invoice_number: { type: 'string', description: 'e.g. INV-2026-0001.' },
+      },
+      required: ['invoice_number'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_receivables_position',
+    description:
+      'Total owed to the business, split into INVOICED (an invoice exists) and UNINVOICED (commission earned but not yet invoiced), per currency. These two are never added together because that would double-count.',
+    risk: 'read',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'propose_invoice_draft',
+    description:
+      'Propose a DRAFT invoice. This does NOT create, issue or send anything — it returns a proposal the user must approve, and even after approval the invoice is only a draft the user must issue themselves. Use when the user says something like "invoice ABC Agency for the $600 commission on booking ABC123".',
+    risk: 'propose',
+    capability: 'ai_writes',
+    parameters: {
+      type: 'object',
+      properties: {
+        client_name: { type: 'string', description: 'Who to bill. Matched against existing clients.' },
+        booking_reference: {
+          type: 'string',
+          description: 'If this invoices a booking commission, its reference. Pulls the gross value, rate and amount owed from the booking.',
+        },
+        lines: {
+          type: 'array',
+          description: 'What is being billed. Omit when booking_reference is given and the whole outstanding commission is being invoiced.',
+          items: {
+            type: 'object',
+            properties: {
+              description: { type: 'string' },
+              quantity: { type: 'number' },
+              unit_price_major: { type: 'number', description: 'Price per unit in dollars.' },
+              tax_code: { type: 'string', description: 'e.g. HST, GST, NONE. Defaults to no tax.' },
+            },
+            required: ['description', 'unit_price_major'],
+            additionalProperties: false,
+          },
+        },
+        due_date: { type: 'string', description: 'YYYY-MM-DD. Defaults to the business payment terms.' },
+        notes: { type: 'string' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'search_transactions',
+    description:
+      "Search this business's transactions by text, merchant, date, category, account, type or review status. Returns a DETERMINISTIC total for everything matching the filter plus a capped sample of rows. Use for \"how much did I spend at Amazon\", \"show my Adobe charges\", \"what did I spend on ads last month\". Always quote the returned total — never add up the sample yourself, it is truncated.",
+    risk: 'read',
+    parameters: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Text to match in description or merchant, e.g. "amazon".' },
+        period: { type: 'string', enum: PERIOD_ENUM },
+        from: { type: 'string', description: 'YYYY-MM-DD. Overrides period.' },
+        to: { type: 'string', description: 'YYYY-MM-DD. Overrides period.' },
+        kind: { type: 'string', enum: [...TRANSACTION_KINDS], description: 'Restrict to one transaction type.' },
+        uncategorized_only: { type: 'boolean' },
+        missing_receipt_only: { type: 'boolean' },
+        min_amount_major: { type: 'number', description: 'Minimum absolute amount in dollars.' },
+        limit: { type: 'number', description: 'Sample rows to return, max 50. Default 25.' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get_portfolio_summary',
+    description:
+      'Revenue, expenses, profit and cash for EVERY business the signed-in user can access, grouped by currency. Use for "how am I doing overall", "compare my businesses", "which business made the most". The server derives the list from the user\'s memberships — you cannot request a business by id.',
+    risk: 'read',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_profit_and_loss',
+    description:
+      'The full deterministic P&L for a period: revenue and expense lines by category with change vs the previous period, plus the movements deliberately EXCLUDED from profit (owner draws, loans, transfers, tax payments). Use for "show my P&L", "explain my P&L", "what hurt profit", and especially "why does profit not match my bank balance" — the excluded list is the answer.',
+    risk: 'read',
+    parameters: periodParam,
+  },
+  {
+    name: 'propose_categorize_transactions',
+    description:
+      'Propose putting specific transactions into a category. Writes NOTHING — returns a proposal showing each transaction with its current and proposed category for the user to approve. Find the transaction ids with search_transactions or find_uncategorized first; never invent an id.',
+    risk: 'financial_write',
+    capability: 'ai_writes',
+    parameters: {
+      type: 'object',
+      properties: {
+        transaction_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Ids from a previous tool result. Max 50.',
+        },
+        category_slug: { type: 'string', description: 'Target category slug, e.g. "advertising".' },
+      },
+      required: ['transaction_ids', 'category_slug'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 export function toolsForContext(plan: string | null | undefined): ToolDefinition[] {
@@ -208,8 +393,38 @@ export interface ToolResult {
   /** Pre-formatted headline figures. The model must quote these verbatim. */
   formatted?: Record<string, string>;
   provenance?: unknown;
-  proposal?: TransactionProposal;
+  proposal?: TransactionProposal | InvoiceDraftProposal;
   error?: string;
+}
+
+/**
+ * A proposed DRAFT invoice. Approving it creates a draft and nothing
+ * more — issuing and sending stay human actions.
+ */
+export interface InvoiceDraftProposal {
+  kind: 'invoice_draft';
+  counterpartyId: string | null;
+  counterpartyName: string | null;
+  bookingId: string | null;
+  currency: string;
+  dueDate?: string;
+  notes?: string;
+  /** Reference context only. Never contributes to a total. */
+  customFields: Record<string, string>;
+  lines: Array<{
+    description: string;
+    quantity: number;
+    unitPriceMinor: number;
+    taxCode: string;
+    taxLabel: string | null;
+    taxRate: number;
+    taxTreatment: string;
+  }>;
+  subtotalMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  summary: string;
+  warnings: string[];
 }
 
 export interface TransactionProposal {
@@ -466,8 +681,360 @@ export async function executeTool(
         return { ok: true, tool: name, data: value, formatted: { count: String(value.count) } };
       }
 
+      // ── Invoicing ─────────────────────────────────────────
+      case 'get_outstanding_invoices':
+      case 'get_overdue_invoices': {
+        const rows =
+          name === 'get_overdue_invoices'
+            ? await getOverdueInvoices(ctx, 100)
+            : await getOutstandingInvoices(ctx, 100);
+        const clients = await clientNames(ctx);
+
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            count: rows.length,
+            invoices: rows.map((i) => ({
+              number: i.number,
+              client: i.counterparty_id ? clients.get(i.counterparty_id) ?? null : null,
+              currency: i.currency,
+              totalMinor: i.total_minor,
+              balanceMinor: i.balance_minor,
+              dueDate: i.due_date,
+              daysOverdue: daysOverdue(i.due_date),
+              status: i.status,
+            })),
+          },
+          formatted: {
+            count: String(rows.length),
+            // Totalled per currency. Adding CAD to USD would be meaningless.
+            totals: Object.entries(
+              rows.reduce<Record<string, number>>((acc, i) => {
+                acc[i.currency] = (acc[i.currency] ?? 0) + i.balance_minor;
+                return acc;
+              }, {})
+            )
+              .map(([cur, minor]) => formatMinor(minor, cur, { showMinor: true }) + ' ' + cur)
+              .join(' · ') || 'nothing outstanding',
+          },
+        };
+      }
+
+      case 'get_invoices': {
+        const clients = await clientNames(ctx);
+        let counterpartyId: string | undefined;
+        if (typeof args.client_name === 'string') {
+          const needle = args.client_name.toLowerCase();
+          for (const [id, nm] of clients) {
+            if (nm.toLowerCase().includes(needle)) { counterpartyId = id; break; }
+          }
+        }
+        const { invoices, total } = await listInvoices(ctx, {
+          status: (args.status as never) ?? 'all',
+          counterpartyId,
+          from: typeof args.from === 'string' ? args.from : undefined,
+          to: typeof args.to === 'string' ? args.to : undefined,
+          pageSize: Math.min(Number(args.limit) || 25, 100),
+        });
+
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            total,
+            invoices: invoices.map((i) => ({
+              number: i.number,
+              client: i.counterparty_id ? clients.get(i.counterparty_id) ?? null : null,
+              status: i.status,
+              currency: i.currency,
+              totalMinor: i.total_minor,
+              balanceMinor: i.balance_minor,
+              issueDate: i.issue_date,
+              dueDate: i.due_date,
+            })),
+          },
+          formatted: { matched: String(total), returned: String(invoices.length) },
+        };
+      }
+
+      case 'get_invoice': {
+        const number = String(args.invoice_number ?? '').trim();
+        if (!number) return { ok: false, tool: name, error: 'An invoice number is required.' };
+
+        const { data: match } = await ctx.db
+          .from('invoices').select('id')
+          .eq('business_id', ctx.businessId).eq('number', number).maybeSingle();
+        if (!match) return { ok: false, tool: name, error: `No invoice numbered ${number}.` };
+
+        const d = await getInvoice(ctx, match.id);
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            number: d.invoice.number,
+            status: d.invoice.status,
+            client: d.counterparty?.name ?? null,
+            currency: d.invoice.currency,
+            totalMinor: d.invoice.total_minor,
+            paidMinor: d.invoice.paid_minor,
+            balanceMinor: d.invoice.balance_minor,
+            issueDate: d.invoice.issue_date,
+            dueDate: d.invoice.due_date,
+            daysOverdue: daysOverdue(d.invoice.due_date),
+            // Reference context — never part of any total.
+            referenceFields: d.invoice.custom_fields,
+            lines: d.lines.map((l) => ({
+              description: l.description,
+              quantity: Number(l.quantity),
+              unitPriceMinor: Number(l.unit_price_minor),
+              taxLabel: l.tax_label,
+              totalMinor: Number(l.total_minor),
+            })),
+            payments: d.payments.map((p) => ({
+              amountMinor: Number(p.amount_minor),
+              receivedOn: p.received_on,
+              method: p.method,
+              matchedToBank: Boolean(p.transaction_id),
+            })),
+            // Answers "why does this invoice exist?"
+            source: d.booking
+              ? {
+                  kind: 'booking',
+                  reference: d.booking.reference,
+                  grossValueMinor: Number(d.booking.gross_value_minor),
+                  commissionRate: d.booking.commission_rate,
+                  commissionExpectedMinor: Number(d.booking.commission_expected_minor),
+                }
+              : { kind: d.invoice.source_kind },
+            history: d.events.map((e) => ({ event: e.event, at: e.created_at })),
+          },
+          formatted: {
+            total: formatMinor(d.invoice.total_minor, d.invoice.currency, { showMinor: true }),
+            balance: formatMinor(d.invoice.balance_minor, d.invoice.currency, { showMinor: true }),
+            status: d.invoice.status,
+          },
+        };
+      }
+
+      case 'get_receivables_position': {
+        const ar = await getARPosition(ctx);
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            note: 'invoiced and uninvoiced are separate. Do not add them together — an invoiced commission would be counted twice.',
+            positions: ar,
+          },
+          formatted: {
+            summary:
+              ar
+                .map(
+                  (a) =>
+                    `${a.currency}: ${formatMinor(a.invoicedMinor, a.currency, { showMinor: true })} invoiced` +
+                    ` (${formatMinor(a.overdueMinor, a.currency, { showMinor: true })} overdue), ` +
+                    `${formatMinor(a.uninvoicedCommissionMinor, a.currency, { showMinor: true })} earned but not yet invoiced`
+                )
+                .join(' · ') || 'nothing owed',
+          },
+        };
+      }
+
       case 'propose_transaction':
         return await proposeTransaction(ctx, args);
+
+      case 'propose_invoice_draft':
+        return await proposeInvoiceDraft(ctx, args);
+
+      case 'search_transactions': {
+        const period = periodFromArgs(args);
+        const limit = Math.min(Number(args.limit) || 25, 50);
+
+        // The AGGREGATE covers every match; the sample is capped. This is
+        // why the tool returns both — the model must never total a
+        // truncated list and present it as the answer.
+        const all = await loadTransactions(ctx.db, ctx.businessId, period);
+        const needle = typeof args.search === 'string' ? args.search.trim().toLowerCase() : '';
+        const minMinor = typeof args.min_amount_major === 'number'
+          ? Math.round(args.min_amount_major * 100) : 0;
+
+        const matched = all.filter((t) => {
+          if (needle) {
+            const hay = `${t.description ?? ''} ${t.merchant ?? ''}`.toLowerCase();
+            if (!hay.includes(needle)) return false;
+          }
+          if (args.kind && t.transaction_kind !== args.kind) return false;
+          if (args.uncategorized_only === true && t.category_id) return false;
+          if (args.missing_receipt_only === true && t.document_id) return false;
+          if (minMinor > 0 && Math.abs(t.amount_minor) < minMinor) return false;
+          return true;
+        });
+
+        let inMinor = 0;
+        let outMinor = 0;
+        for (const t of matched) {
+          if (t.amount_minor > 0) inMinor += t.amount_minor;
+          else outMinor += -t.amount_minor;
+        }
+
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            period,
+            matchCount: matched.length,
+            returnedCount: Math.min(matched.length, limit),
+            truncated: matched.length > limit,
+            transactions: matched.slice(0, limit).map((t) => ({
+              id: t.id,
+              date: t.occurred_on,
+              description: t.description,
+              merchant: t.merchant,
+              amount: fmt(t.amount_minor),
+              kind: t.transaction_kind,
+              categoryId: t.category_id,
+              hasReceipt: Boolean(t.document_id),
+            })),
+          },
+          formatted: {
+            period: period.label,
+            matchCount: String(matched.length),
+            totalOut: fmt(outMinor),
+            totalIn: fmt(inMinor),
+            net: fmt(inMinor - outMinor),
+          },
+        };
+      }
+
+      case 'get_portfolio_summary': {
+        // Businesses come from the caller's memberships. There is no
+        // parameter for the model to widen its own access.
+        const portfolio = await getPortfolio({
+          db: ctx.db,
+          userId: ctx.userId,
+          email: ctx.email,
+        });
+
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            businesses: portfolio.businesses.map((row) => ({
+              name: row.business.name,
+              type: row.business.business_type,
+              currency: row.business.base_currency,
+              revenue: formatMinor(row.revenueMinor, row.business.base_currency),
+              expenses: formatMinor(row.expensesMinor, row.business.base_currency),
+              profit: formatMinor(row.profitMinor, row.business.base_currency),
+              cash: formatMinor(row.cashMinor, row.business.base_currency),
+              error: row.error,
+            })),
+            totalsByCurrency: portfolio.totalsByCurrency.map((t) => ({
+              currency: t.currency,
+              businessCount: t.count,
+              revenue: formatMinor(t.revenueMinor, t.currency),
+              expenses: formatMinor(t.expensesMinor, t.currency),
+              profit: formatMinor(t.profitMinor, t.currency),
+              cash: formatMinor(t.cashMinor, t.currency),
+            })),
+            note: 'All-time figures. Currencies are reported separately and never summed — BankDeMark does not convert.',
+          },
+          formatted: { businessCount: String(portfolio.businesses.length) },
+        };
+      }
+
+      case 'get_profit_and_loss': {
+        const period = periodFromArgs(args);
+        const report = await generateProfitAndLoss(ctx, period);
+
+        return {
+          ok: true,
+          tool: name,
+          data: {
+            period: report.period,
+            revenueLines: report.revenueLines.map((l) => ({ label: l.label, amount: fmt(l.amountMinor), change: l.change })),
+            expenseLines: report.expenseLines.map((l) => ({ label: l.label, amount: fmt(l.amountMinor), change: l.change })),
+            excludedFromProfit: report.excluded.map((e) => ({
+              label: e.label, amount: fmt(e.amountMinor), reason: e.reason,
+            })),
+            uncategorisedCount: report.uncategorisedCount,
+            showsVolume: report.showsVolume,
+          },
+          formatted: {
+            period: period.label,
+            revenue: fmt(report.totalRevenueMinor),
+            expenses: fmt(report.totalExpensesMinor),
+            profit: fmt(report.profitMinor),
+            margin: report.marginPercent === null ? 'n/a' : `${(report.marginPercent * 100).toFixed(1)}%`,
+            grossVolume: report.showsVolume ? fmt(report.grossVolumeMinor) : '',
+          },
+        };
+      }
+
+      case 'propose_categorize_transactions': {
+        const ids = Array.isArray(args.transaction_ids) ? args.transaction_ids.map(String) : [];
+        if (ids.length === 0) {
+          return { ok: false, tool: name, error: 'No transactions were given.' };
+        }
+        if (ids.length > 50) {
+          return { ok: false, tool: name, error: 'Categorise at most 50 transactions at a time.' };
+        }
+
+        // Ownership is established server-side. A model-supplied id that
+        // belongs to another business is rejected here, before anything
+        // reaches a proposal card.
+        await assertTransactionsOwned(ctx, ids);
+
+        const slug = String(args.category_slug ?? '');
+        const { data: category } = await ctx.db
+          .from('categories')
+          .select('id, name, kind')
+          .or(`business_id.eq.${ctx.businessId},business_id.is.null`)
+          .eq('slug', slug)
+          .maybeSingle();
+
+        if (!category) {
+          return { ok: false, tool: name, error: `There is no category called "${slug}".` };
+        }
+
+        const { data: rows } = await ctx.db
+          .from('transactions')
+          .select('id, occurred_on, description, amount_minor, category_id')
+          .eq('business_id', ctx.businessId)
+          .in('id', ids);
+
+        const { data: cats } = await ctx.db
+          .from('categories')
+          .select('id, name')
+          .or(`business_id.eq.${ctx.businessId},business_id.is.null`);
+        const catName = new Map((cats ?? []).map((c) => [c.id, c.name]));
+
+        const changes = (rows ?? []).map((r) => ({
+          id: r.id,
+          date: r.occurred_on,
+          description: r.description,
+          amount: fmt(r.amount_minor),
+          from: r.category_id ? catName.get(r.category_id) ?? 'Unknown' : 'Not categorised',
+          to: category.name,
+        }));
+
+        return {
+          ok: true,
+          tool: name,
+          proposal: {
+            kind: 'categorize',
+            transactionIds: changes.map((c) => c.id),
+            categoryId: category.id,
+            categoryName: category.name,
+            changes,
+            summary: `Move ${changes.length} transaction${changes.length === 1 ? '' : 's'} to ${category.name}`,
+            warnings: [],
+          } as never,
+          formatted: {
+            summary: `Move ${changes.length} transaction${changes.length === 1 ? '' : 's'} to ${category.name}`,
+          },
+        };
+      }
 
       default:
         return { ok: false, tool: name, error: `Unknown tool: ${name}` };
@@ -559,5 +1126,226 @@ async function proposeTransaction(
       warnings,
     },
     formatted: { summary },
+  };
+}
+
+// ── Invoice helpers ─────────────────────────────────────────
+
+async function clientNames(ctx: BusinessContext): Promise<Map<string, string>> {
+  const { data } = await ctx.db
+    .from('counterparties')
+    .select('id, name')
+    .eq('business_id', ctx.businessId);
+  return new Map((data ?? []).map((c) => [c.id, c.name]));
+}
+
+/**
+ * Build a DRAFT invoice proposal.
+ *
+ * Nothing is written here. The user approves the proposal, which
+ * creates a DRAFT, and the user still has to issue it and send it
+ * themselves. Zylx never issues and never sends — two deliberate
+ * human gates between "the assistant suggested it" and "a client
+ * received a financial document".
+ */
+async function proposeInvoiceDraft(
+  ctx: BusinessContext,
+  args: Record<string, unknown>
+): Promise<ToolResult> {
+  const tool = 'propose_invoice_draft';
+  const currency = ctx.business.base_currency;
+  const warnings: string[] = [];
+
+  // ── Resolve the client. Never invent an id. ──
+  const clients = await clientNames(ctx);
+  let counterpartyId: string | null = null;
+  let counterpartyName: string | null = null;
+
+  if (typeof args.client_name === 'string' && args.client_name.trim()) {
+    const needle = args.client_name.trim().toLowerCase();
+    const exact = [...clients].find(([, n]) => n.toLowerCase() === needle);
+    const partial = exact ?? [...clients].find(([, n]) => n.toLowerCase().includes(needle));
+    if (partial) {
+      [counterpartyId, counterpartyName] = partial;
+    } else {
+      warnings.push(
+        `No client called "${args.client_name}" exists yet. Choose or add one before issuing.`
+      );
+    }
+  }
+
+  // ── Booking-sourced commission ──
+  let bookingId: string | null = null;
+  const customFields: Record<string, string> = {};
+  let lines: Array<{ description: string; quantity: number; unitPriceMinor: number; taxCode: string; taxLabel: string | null; taxRate: number; taxTreatment: string }> = [];
+
+  if (typeof args.booking_reference === 'string' && args.booking_reference.trim()) {
+    const ref = args.booking_reference.trim();
+    const { data: booking } = await ctx.db
+      .from('bookings')
+      .select('id, reference, gross_value_minor, currency, commission_rate, commission_expected_minor, commission_received_minor, service_date, client_id, supplier_id, status')
+      .eq('business_id', ctx.businessId)
+      .eq('reference', ref)
+      .maybeSingle();
+
+    if (!booking) {
+      return { ok: false, tool, error: `No booking with reference ${ref}.` };
+    }
+    if (booking.status === 'cancelled') {
+      return { ok: false, tool, error: `Booking ${ref} is cancelled.` };
+    }
+
+    const existing = await ctx.db
+      .from('invoices')
+      .select('number, status')
+      .eq('business_id', ctx.businessId)
+      .eq('booking_id', booking.id)
+      .neq('status', 'void')
+      .limit(1);
+    if (existing.data && existing.data.length > 0) {
+      return {
+        ok: false,
+        tool,
+        error: `Invoice ${existing.data[0].number ?? '(draft)'} already covers booking ${ref}.`,
+      };
+    }
+
+    const outstanding =
+      Number(booking.commission_expected_minor) - Number(booking.commission_received_minor);
+    if (outstanding <= 0) {
+      return { ok: false, tool, error: `Booking ${ref} has no outstanding commission to invoice.` };
+    }
+
+    bookingId = booking.id;
+
+    // The gross booking value is CONTEXT. It is deliberately a
+    // reference field and not a line, so it cannot become revenue.
+    customFields.booking_reference = booking.reference ?? ref;
+    customFields.gross_booking_value =
+      `${(Number(booking.gross_value_minor) / 100).toFixed(2)} ${booking.currency}`;
+    if (booking.commission_rate) {
+      customFields.commission_rate = `${(Number(booking.commission_rate) * 100)
+        .toFixed(2)
+        .replace(/\.?0+$/, '')}%`;
+    }
+    if (booking.service_date) customFields.travel_date = booking.service_date;
+
+    const [supplier, traveller] = await Promise.all([
+      booking.supplier_id
+        ? ctx.db.from('counterparties').select('name').eq('id', booking.supplier_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      booking.client_id
+        ? ctx.db.from('counterparties').select('name').eq('id', booking.client_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    if (supplier.data?.name) customFields.supplier = supplier.data.name;
+    if (traveller.data?.name) customFields.traveller = traveller.data.name;
+
+    lines = [
+      {
+        description: `Booking commission — Booking ${booking.reference ?? ref}`,
+        quantity: 1,
+        unitPriceMinor: outstanding,
+        taxCode: 'NONE',
+        taxLabel: null,
+        taxRate: 0,
+        taxTreatment: 'out_of_scope',
+      },
+    ];
+  }
+
+  // ── Explicit lines ──
+  if (Array.isArray(args.lines) && args.lines.length > 0) {
+    const taxRates = await listTaxRates(ctx);
+    const byCode = new Map(taxRates.map((t) => [t.code.toUpperCase(), t]));
+
+    lines = (args.lines as Array<Record<string, unknown>>).map((l) => {
+      const codeRaw = typeof l.tax_code === 'string' ? l.tax_code.toUpperCase() : 'NONE';
+      const tax = byCode.get(codeRaw);
+      if (!tax && codeRaw !== 'NONE') {
+        warnings.push(`No tax code "${codeRaw}" is configured — that line is untaxed.`);
+      }
+      const unitMajor = Number(l.unit_price_major);
+      return {
+        description: String(l.description ?? '').trim(),
+        quantity: Number(l.quantity) || 1,
+        // parseMajorToMinor via money domain would need a string; the
+        // model supplies a number, so round exactly once here.
+        unitPriceMinor: Math.round((Number.isFinite(unitMajor) ? unitMajor : 0) * 100),
+        taxCode: tax?.code ?? 'NONE',
+        taxLabel: tax?.label ?? null,
+        taxRate: tax?.rate ?? 0,
+        taxTreatment: tax?.treatment ?? 'out_of_scope',
+      };
+    });
+  }
+
+  if (lines.length === 0) {
+    return {
+      ok: false,
+      tool,
+      error: 'Nothing to bill. Give either a booking reference or at least one line item.',
+    };
+  }
+  if (lines.some((l) => !l.description)) {
+    return { ok: false, tool, error: 'Every line needs a description.' };
+  }
+
+  // Same engine the server and the builder use — the proposed total is
+  // the total that would actually be stored.
+  const totals = computeInvoiceTotals(
+    lines.map((l) => ({
+      description: l.description,
+      quantity: l.quantity,
+      unitPriceMinor: l.unitPriceMinor,
+      taxCode: l.taxCode,
+      taxLabel: l.taxLabel,
+      taxRate: l.taxRate,
+      taxTreatment: l.taxTreatment as never,
+    })),
+    { currency }
+  );
+
+  const dueDate =
+    typeof args.due_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(args.due_date)
+      ? args.due_date
+      : undefined;
+
+  const summary =
+    `Draft invoice · ${counterpartyName ?? 'client not chosen'} · ` +
+    `${formatMinor(totals.totalMinor, currency, { showMinor: true })} ${currency}` +
+    (bookingId ? ` · booking ${customFields.booking_reference}` : '');
+
+  return {
+    ok: true,
+    tool,
+    proposal: {
+      kind: 'invoice_draft',
+      counterpartyId,
+      counterpartyName,
+      bookingId,
+      currency,
+      dueDate,
+      notes: typeof args.notes === 'string' ? args.notes : undefined,
+      customFields,
+      lines: lines.map((l) => ({
+        description: l.description,
+        quantity: l.quantity,
+        unitPriceMinor: l.unitPriceMinor,
+        taxCode: l.taxCode,
+        taxLabel: l.taxLabel,
+        taxRate: l.taxRate,
+        taxTreatment: l.taxTreatment,
+      })),
+      totalMinor: totals.totalMinor,
+      subtotalMinor: totals.subtotalMinor,
+      taxMinor: totals.taxMinor,
+      summary,
+      warnings,
+    },
+    formatted: {
+      summary,
+      total: formatMinor(totals.totalMinor, currency, { showMinor: true }),
+    },
   };
 }

@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: '/command/wealth', label: 'Wealth Engine', icon: '◈' },
   { href: '/command/affordability', label: 'Affordability', icon: '◎' },
   { href: '/command/goals', label: 'Goals', icon: '🎯' },
-  { href: '/command/coach', label: 'AI Coach', icon: '✦' },
+  { href: '/command/portfolio', label: 'Zylx', icon: '✦' },
   { href: '/command/reports', label: 'Reports', icon: '⊟' },
   { href: '/command/profile', label: 'Edit Profile', icon: '◉' },
   { href: '/command/marketplace', label: 'Marketplace', icon: '⊕' },
