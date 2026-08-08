@@ -186,6 +186,7 @@ export default async function DashboardPage({
           <Action href={`${base}/transactions/new?kind=expense`} label="Add expense" />
           <Action href={`${base}/transactions/new?kind=income`} label="Log money in" />
           <Action href={`${base}/transactions/new`} label="Record a transfer" />
+          <Action href={`${base}/receipts`} label="Snap a receipt" />
           <Action href={`${base}/reports/profit-and-loss`} label="Generate P&L" />
           <Action href={`${base}/zylx`} label="Ask Zylx" gold />
         </div>

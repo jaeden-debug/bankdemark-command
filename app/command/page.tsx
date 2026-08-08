@@ -65,6 +65,10 @@ const LIVE_MODULES = [
     body: 'Run more than one business from one login. Each keeps its own books. Nothing mixes.',
   },
   {
+    title: 'Snap a receipt',
+    body: 'Photograph a receipt and we read the merchant, date and total, then check whether it is already in your books before adding anything. You confirm every figure — nothing is recorded on a guess.',
+  },
+  {
     title: 'Generate a P&L',
     body: 'One click for what came in, what went out and what you actually made — with the movements that are not profit listed separately, so it is clear why it does not match your bank balance.',
   },
@@ -78,7 +82,6 @@ const NOT_YET = [
   'Live bank, Stripe, Shopify and PayPal connections',
   'Cash flow, balance sheet and tax reports',
   'Tax readiness checks and accountant package',
-  'Receipt upload and matching',
   'Personal net worth, investments and retirement',
   'Zylx web research and Zylx Studio business context',
 ];
@@ -112,6 +115,10 @@ const FAQ = [
   {
     q: 'Does BankDeMark connect to my bank?',
     a: 'Not with a live connection yet. You can import a CSV export from your bank, which handles most of the work, and you can record transactions by hand. Automatic bank, Stripe, Shopify and PayPal connections are being built.',
+  },
+  {
+    q: 'Can Zylx read my receipts?',
+    a: 'Yes. Photograph a receipt and BankDeMark reads the merchant, date and total, suggests a category, and checks whether it already matches a transaction you have. Every figure is shown in an editable form for you to confirm — an AI reading of someone else\'s document never becomes a financial record on its own, and the record keeps a note of how it was read.',
   },
   {
     q: 'Can I track commissions?',

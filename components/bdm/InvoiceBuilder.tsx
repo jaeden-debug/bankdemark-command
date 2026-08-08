@@ -363,11 +363,21 @@ export default function InvoiceBuilder(props: InvoiceBuilderProps) {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              {selectedClient && !selectedClient.email && (
-                <span className="bdm-hint">
-                  This client has no email address, so the invoice cannot be emailed yet.
-                </span>
-              )}
+              <span className="bdm-hint">
+                {selectedClient && !selectedClient.email ? (
+                  <>
+                    This client has no email address, so the invoice cannot be emailed yet.{' '}
+                    <a className="font-semibold underline" href={`/b/${props.businessId}/clients`}>
+                      Add one
+                    </a>
+                    .
+                  </>
+                ) : (
+                  <a className="font-semibold underline" href={`/b/${props.businessId}/clients`}>
+                    Manage clients
+                  </a>
+                )}
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

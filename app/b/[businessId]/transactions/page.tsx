@@ -36,6 +36,7 @@ export default async function TransactionsPage({
           <p className="bdm-sub mt-1">{result.total.toLocaleString()} recorded</p>
         </div>
         <div className="flex gap-2">
+          <Link href={`/b/${ctx.businessId}/receipts`} className="bdm-btn-secondary">Snap a receipt</Link>
           <Link href={`/b/${ctx.businessId}/import`} className="bdm-btn-secondary">Import a file</Link>
           <Link href={`/b/${ctx.businessId}/transactions/new`} className="bdm-btn-gold">+ Add transaction</Link>
         </div>

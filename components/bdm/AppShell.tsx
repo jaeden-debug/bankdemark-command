@@ -34,6 +34,7 @@ function navFor(businessId: string, businessType: string): NavItem[] {
     { href: `${base}/dashboard`, label: 'Dashboard', icon: '◈', primary: true },
     { href: `${base}/money-in`, label: moneyInLabel, icon: '↗', primary: true },
     { href: `${base}/invoices`, label: 'Invoices', icon: '▦', primary: true },
+    { href: `${base}/clients`, label: 'Clients', icon: '◍' },
     { href: `${base}/transactions`, label: 'Transactions', icon: '≡' },
     { href: `${base}/reports`, label: 'Reports', icon: '▤' },
     { href: `${base}/zylx`, label: 'Zylx', icon: '✦', primary: true },

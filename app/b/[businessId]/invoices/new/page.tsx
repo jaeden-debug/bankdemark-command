@@ -66,8 +66,11 @@ export default async function NewInvoicePage({
           <p className="bdm-sub mx-auto mt-2 max-w-sm">
             An invoice needs someone to bill. Add the client or agency you invoice, then come back.
           </p>
-          <Link href={`/b/${ctx.businessId}/settings`} className="bdm-btn-gold mt-4">
-            Go to clients
+          <Link
+            href={`/b/${ctx.businessId}/clients?next=/b/${ctx.businessId}/invoices/new`}
+            className="bdm-btn-gold mt-4"
+          >
+            Add a client
           </Link>
         </div>
       ) : (

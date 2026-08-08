@@ -200,42 +200,6 @@ export type Database = {
         }
         Relationships: []
       }
-      ai_user_memory: {
-        Row: {
-          content: string
-          created_at: string
-          id: string
-          importance: number | null
-          memory_type: string
-          source: string | null
-          title: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          content: string
-          created_at?: string
-          id?: string
-          importance?: number | null
-          memory_type?: string
-          source?: string | null
-          title?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          content?: string
-          created_at?: string
-          id?: string
-          importance?: number | null
-          memory_type?: string
-          source?: string | null
-          title?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       audit_log: {
         Row: {
           action: string
@@ -850,14 +814,24 @@ export type Database = {
         Row: {
           amount_minor: number | null
           business_id: string
+          confirmed_at: string | null
+          confirmed_by: string | null
           created_at: string
           currency: string | null
           doc_date: string | null
           doc_type: string
           extracted: Json | null
+          extracted_at: string | null
+          extraction_confidence: number | null
+          extraction_error: string | null
+          extraction_method: string | null
+          extraction_model: string | null
           id: string
+          matched_transaction_id: string | null
           mime_type: string | null
           original_filename: string | null
+          page_count: number | null
+          sha256: string | null
           size_bytes: number | null
           status: string
           storage_path: string
@@ -868,14 +842,24 @@ export type Database = {
         Insert: {
           amount_minor?: number | null
           business_id: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
           created_at?: string
           currency?: string | null
           doc_date?: string | null
           doc_type?: string
           extracted?: Json | null
+          extracted_at?: string | null
+          extraction_confidence?: number | null
+          extraction_error?: string | null
+          extraction_method?: string | null
+          extraction_model?: string | null
           id?: string
+          matched_transaction_id?: string | null
           mime_type?: string | null
           original_filename?: string | null
+          page_count?: number | null
+          sha256?: string | null
           size_bytes?: number | null
           status?: string
           storage_path: string
@@ -886,14 +870,24 @@ export type Database = {
         Update: {
           amount_minor?: number | null
           business_id?: string
+          confirmed_at?: string | null
+          confirmed_by?: string | null
           created_at?: string
           currency?: string | null
           doc_date?: string | null
           doc_type?: string
           extracted?: Json | null
+          extracted_at?: string | null
+          extraction_confidence?: number | null
+          extraction_error?: string | null
+          extraction_method?: string | null
+          extraction_model?: string | null
           id?: string
+          matched_transaction_id?: string | null
           mime_type?: string | null
           original_filename?: string | null
+          page_count?: number | null
+          sha256?: string | null
           size_bytes?: number | null
           status?: string
           storage_path?: string
@@ -907,6 +901,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_matched_transaction_id_fkey"
+            columns: ["matched_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -2027,6 +2028,7 @@ export type Database = {
           brand_id: string | null
           business_id: string
           category_id: string | null
+          confirmed_by_user: boolean
           counterparty_id: string | null
           created_at: string
           created_by: string | null
@@ -2036,6 +2038,8 @@ export type Database = {
           description: string
           document_id: string | null
           external_id: string | null
+          extraction_confidence: number | null
+          extraction_method: string | null
           gross_amount_minor: number | null
           id: string
           import_batch_id: string | null
@@ -2047,6 +2051,7 @@ export type Database = {
           recognized_amount_minor: number | null
           review_status: Database["public"]["Enums"]["review_state"]
           source: Database["public"]["Enums"]["data_source"]
+          source_document_id: string | null
           transaction_kind: Database["public"]["Enums"]["transaction_kind"]
           transfer_group_id: string | null
           updated_at: string
@@ -2060,6 +2065,7 @@ export type Database = {
           brand_id?: string | null
           business_id: string
           category_id?: string | null
+          confirmed_by_user?: boolean
           counterparty_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -2069,6 +2075,8 @@ export type Database = {
           description?: string
           document_id?: string | null
           external_id?: string | null
+          extraction_confidence?: number | null
+          extraction_method?: string | null
           gross_amount_minor?: number | null
           id?: string
           import_batch_id?: string | null
@@ -2080,6 +2088,7 @@ export type Database = {
           recognized_amount_minor?: number | null
           review_status?: Database["public"]["Enums"]["review_state"]
           source?: Database["public"]["Enums"]["data_source"]
+          source_document_id?: string | null
           transaction_kind?: Database["public"]["Enums"]["transaction_kind"]
           transfer_group_id?: string | null
           updated_at?: string
@@ -2093,6 +2102,7 @@ export type Database = {
           brand_id?: string | null
           business_id?: string
           category_id?: string | null
+          confirmed_by_user?: boolean
           counterparty_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -2102,6 +2112,8 @@ export type Database = {
           description?: string
           document_id?: string | null
           external_id?: string | null
+          extraction_confidence?: number | null
+          extraction_method?: string | null
           gross_amount_minor?: number | null
           id?: string
           import_batch_id?: string | null
@@ -2113,6 +2125,7 @@ export type Database = {
           recognized_amount_minor?: number | null
           review_status?: Database["public"]["Enums"]["review_state"]
           source?: Database["public"]["Enums"]["data_source"]
+          source_document_id?: string | null
           transaction_kind?: Database["public"]["Enums"]["transaction_kind"]
           transfer_group_id?: string | null
           updated_at?: string
@@ -2186,6 +2199,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
             referencedColumns: ["id"]
           },
         ]

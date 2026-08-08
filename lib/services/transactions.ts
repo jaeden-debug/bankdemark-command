@@ -41,6 +41,13 @@ export interface CreateTransactionInput {
   externalId?: string | null;
   importBatchId?: string | null;
   raw?: unknown;
+  /** The document this record was created FROM, if any. */
+  sourceDocumentId?: string | null;
+  /** How the figures were obtained. AI-extracted values start unconfirmed. */
+  extractionMethod?: 'ai_vision' | 'ai_text' | 'manual' | 'none' | null;
+  extractionConfidence?: number | null;
+  /** TRUE only when a human approved the figures. */
+  confirmedByUser?: boolean;
 }
 
 export interface WriteOptions {
@@ -196,6 +203,11 @@ export async function createTransaction(
         external_id: input.externalId ?? null,
         import_batch_id: input.importBatchId ?? null,
         raw: (input.raw ?? null) as never,
+        source_document_id: input.sourceDocumentId ?? null,
+        extraction_method: input.extractionMethod ?? (options.actorType === 'user' || !options.actorType ? 'manual' : null),
+        extraction_confidence: input.extractionConfidence ?? null,
+        // A figure a machine read stays unconfirmed until a person says so.
+        confirmed_by_user: input.confirmedByUser ?? (options.source === 'manual'),
         dedupe_hash: dedupeHash({
           accountId: input.accountId,
           occurredOn,
