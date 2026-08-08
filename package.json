@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.7.0",
-    "@supabase/ssr": "^0.4.0",
-    "@supabase/supabase-js": "^2.44.2",
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.2",
     "ai": "^6.0.191",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
@@ -34,6 +34,7 @@
     "eslint-config-next": "14.2.5",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^2.1.9"
   }
 }

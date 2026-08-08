@@ -6,26 +6,28 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://command.bankdemark.com"),
 
   title: {
-    default: "Command by BankDeMark | Your Financial Command Center",
-    template: "%s | Command by BankDeMark",
+    default: "BankDeMark Command | AI Financial Command Center for Business",
+    // Pages already carry the brand, so the template only appends it when
+    // a page title does not. Absolute titles opt out entirely.
+    template: "%s | BankDeMark Command",
   },
 
   description:
-    "Plan. Track. Optimize. Grow. AI-powered wealth planning, debt elimination, financial health scoring, and smarter money decisions.",
+    "Track revenue, expenses, commissions, cash flow and business wealth in one AI-powered financial command center, with Zylx built in to explain your numbers.",
 
   applicationName: "Command",
 
   keywords: [
-    "financial dashboard",
-    "personal finance app",
-    "wealth tracker",
-    "debt payoff planner",
-    "financial health score",
-    "ai financial coach",
-    "wealth building",
-    "budget planner",
-    "financial intelligence platform",
-    "command by bankdemark",
+    "ai financial command center",
+    "business financial dashboard",
+    "small business finance software",
+    "business expense tracking",
+    "business revenue tracking",
+    "cash flow dashboard",
+    "ai financial assistant",
+    "business financial reporting",
+    "commission tracking software",
+    "bankdemark command",
   ],
 
   icons: {
@@ -43,7 +45,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Command by BankDeMark",
-    title: "Command by BankDeMark | Your Financial Command Center",
+    title: "BankDeMark Command | AI Financial Command Center for Business",
     description:
       "Plan. Track. Optimize. Grow. AI-powered wealth planning, debt elimination, financial health scoring, and smarter money decisions.",
     url: "https://command.bankdemark.com",
@@ -59,7 +61,7 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Command by BankDeMark | Your Financial Command Center",
+    title: "BankDeMark Command | AI Financial Command Center for Business",
     description:
       "Plan. Track. Optimize. Grow. AI-powered wealth planning, debt elimination, financial health scoring, and smarter money decisions.",
     images: [

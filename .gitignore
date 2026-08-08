@@ -30,3 +30,6 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Supabase CLI scratch state (contains linked-project + pooler URL)
+supabase/.temp/

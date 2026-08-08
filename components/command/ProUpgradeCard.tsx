@@ -1,172 +1,141 @@
 'use client';
 
-import { useState } from 'react';
+import { PLAN_MARKETING, PLANS, ROADMAP_NOT_SOLD } from '@/lib/services/entitlements';
+import { formatMinor } from '@/lib/domain/money';
 
-const FREE_FEATURES = [
-  'Financial health dashboard',
-  'Core metric calculations',
-  'Basic AI coach (5 questions/day)',
-  'Debt & wealth engines',
-  'Basic reports',
-];
+// ============================================================
+// Every line rendered here is derived from the entitlements table,
+// which is what the server actually enforces.
+//
+// The previous version advertised eight "Pro Adds" — unlimited AI,
+// scenario simulations, a couple & family dashboard, a business
+// module, alerts, tax planning mode, PDF export and priority support.
+// None were gated; several did not exist. Checkout took $19/$149/$299
+// and granted nothing.
+//
+// Purchase is therefore disabled until Stripe prices are mapped to the
+// new plan ids and the webhook writes an enforced plan. Feature lists
+// can no longer drift from enforcement because they are the same data.
+// ============================================================
 
-const PRO_FEATURES = [
-  'Unlimited AI coach with deep context',
-  'Advanced scenario simulations',
-  'Couple & family dashboard',
-  'Business finance module',
-  'Wealth & debt alerts',
-  'Tax planning mode',
-  'PDF export for all reports',
-  'Priority support',
-];
+const CHECKOUT_ENABLED = false;
+
+const freeFeatures = PLAN_MARKETING.filter((f) => f.plans.includes('free')).map((f) => f.label);
+const starterAdds = PLAN_MARKETING.filter(
+  (f) => f.plans.includes('starter') && !f.plans.includes('free')
+).map((f) => f.label);
+const businessAdds = PLAN_MARKETING.filter(
+  (f) => f.plans.includes('business') && !f.plans.includes('starter')
+).map((f) => f.label);
+
+function price(planId: 'starter' | 'business'): string {
+  const plan = PLANS[planId];
+  return plan.monthlyPriceMinor === null
+    ? '—'
+    : formatMinor(plan.monthlyPriceMinor, plan.currency);
+}
 
 export default function ProUpgradeCard({ inline = false }: { inline?: boolean }) {
-  const [billing, setBilling] = useState<'monthly' | 'yearly'>('yearly');
-  const [loadingPlan, setLoadingPlan] = useState<'monthly' | 'yearly' | 'lifetime' | null>(null);
-
-  async function startCheckout(plan: 'monthly' | 'yearly' | 'lifetime') {
-    try {
-      setLoadingPlan(plan);
-
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'Unable to start checkout.');
-      }
-
-      if (data?.url) {
-        window.location.href = data.url;
-      }
-    } catch (error: any) {
-      alert(error?.message || 'Unable to start checkout.');
-    } finally {
-      setLoadingPlan(null);
-    }
-  }
-
-  const price = billing === 'monthly' ? '$19' : '$149';
-  const period = billing === 'monthly' ? '/month' : '/year';
-  const savings = billing === 'yearly' ? 'Save $79 vs monthly' : null;
-
   if (inline) {
     return (
-      <div className="glass-card p-4 border-brand-gold/20 bg-brand-gold/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div className="bdm-card flex flex-col items-start justify-between gap-3 p-4 sm:flex-row sm:items-center">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-yellow-400 text-sm">✦</span>
-            <span className="text-sm font-semibold text-yellow-300">Upgrade to BankDeMark Pro</span>
-          </div>
-          <p className="text-xs text-zinc-400">Unlock advanced AI, PDF reports, scenarios & more.</p>
+          <p className="text-sm font-bold text-ink">More businesses, more automation</p>
+          <p className="mt-0.5 text-xs text-muted">
+            Paid plans are being finalised. Everything you can see today is free.
+          </p>
         </div>
-          <a
-            href="/command/marketplace#pro"
-            className="cmd-btn-primary text-sm whitespace-nowrap"
-            style={{ background: 'linear-gradient(135deg, #F5C842, #C9A230)' }}
-          >
-            See Pro Plans
-          </a>
+        <a href="/command/marketplace#plans" className="bdm-btn-secondary whitespace-nowrap text-sm">
+          See plans
+        </a>
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-6 border-brand-gold/20 bg-gradient-to-br from-yellow-900/10 to-transparent">
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-yellow-400">✦</span>
-        <h3 className="font-bold text-lg text-white">BankDeMark Pro</h3>
-        <span className="text-xs bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded-full font-medium">
-          EARLY ACCESS
-        </span>
-      </div>
-      <p className="text-zinc-400 text-sm mb-5">
-        Everything in Free, plus advanced tools for serious financial optimization.
-      </p>
+    <section id="plans" className="bdm-card p-6">
+      <header className="mb-5">
+        <p className="bdm-eyebrow">Plans</p>
+        <h2 className="bdm-h2 mt-1">What each plan includes</h2>
+        <p className="bdm-sub mt-1.5">
+          Financial accuracy is never limited. Every plan shows your real numbers. Paid plans raise
+          limits on scale and automation.
+        </p>
+      </header>
 
-      {/* Billing toggle */}
-      <div className="flex items-center gap-2 mb-5">
-        <div className="flex bg-white/5 border border-white/10 rounded-lg p-0.5">
-          <button
-            onClick={() => setBilling('monthly')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${billing === 'monthly' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-300'}`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setBilling('yearly')}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${billing === 'yearly' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-300'}`}
-          >
-            Yearly
-          </button>
-        </div>
-        {savings && (
-          <span className="text-xs text-emerald-400 font-medium">{savings}</span>
+      <div className="grid gap-4 md:grid-cols-3">
+        <PlanColumn name="Free" priceLabel="$0" caption="Everything you need for one business." features={freeFeatures} />
+        <PlanColumn
+          name="Starter"
+          priceLabel={`${price('starter')}/mo`}
+          caption="More history, research and receipts."
+          features={starterAdds}
+          prefix="Everything in Free, plus"
+          highlight
+        />
+        <PlanColumn
+          name="Business"
+          priceLabel={`${price('business')}/mo`}
+          caption="Several businesses and your accountant."
+          features={businessAdds}
+          prefix="Everything in Starter, plus"
+        />
+      </div>
+
+      <div className="mt-6 rounded-panel border border-gold-line bg-gold-tint p-4">
+        <p className="text-sm font-bold text-ink">Not built yet — and not sold</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-muted">
+          These are on the roadmap. They are listed here so nobody pays for something that does not
+          exist:
+        </p>
+        <ul className="mt-2 space-y-1">
+          {ROADMAP_NOT_SOLD.map((item) => (
+            <li key={item} className="text-[13px] text-muted">— {item}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-5">
+        {CHECKOUT_ENABLED ? null : (
+          <p className="rounded-control border border-gold-line bg-white/60 px-4 py-3 text-center text-[13px] text-muted">
+            Paid plans are not open for purchase yet. Everything currently in BankDeMark is available
+            free while the billing setup is completed.
+          </p>
         )}
       </div>
+    </section>
+  );
+}
 
-      {/* Pricing */}
-      <div className="flex items-baseline gap-1 mb-5">
-        <span className="text-3xl font-bold text-white">{price}</span>
-        <span className="text-zinc-400 text-sm">{period}</span>
-      </div>
-
-      {/* Feature comparison */}
-      <div className="grid sm:grid-cols-2 gap-4 mb-6">
-        <div>
-          <p className="text-xs text-zinc-500 font-semibold uppercase tracking-wide mb-2">Free Includes</p>
-          <ul className="space-y-1.5">
-            {FREE_FEATURES.map(f => (
-              <li key={f} className="text-sm text-zinc-400 flex items-start gap-2">
-                <span className="text-zinc-600 mt-0.5">✓</span>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <p className="text-xs text-yellow-400 font-semibold uppercase tracking-wide mb-2">Pro Adds</p>
-          <ul className="space-y-1.5">
-            {PRO_FEATURES.map(f => (
-              <li key={f} className="text-sm text-yellow-200/80 flex items-start gap-2">
-                <span className="text-yellow-400 mt-0.5">✦</span>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {/* CTAs */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <button
-          type="button"
-          className="flex-1 py-3 rounded-xl font-semibold text-sm text-center transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg, #F5C842, #C9A230)', color: '#080C14' }}
-          onClick={() => startCheckout(billing)}
-          disabled={loadingPlan !== null}
-        >
-          {loadingPlan === billing ? 'Opening checkout…' : `Start Pro — ${price}${period}`}
-        </button>
-          <button
-            type="button"
-            className="flex-1 py-3 rounded-xl border border-yellow-400/30 bg-yellow-400/10 text-sm font-semibold text-yellow-200 transition-all hover:bg-yellow-400/15 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={() => startCheckout('lifetime')}
-            disabled={loadingPlan !== null}
-          >
-            {loadingPlan === 'lifetime' ? 'Opening checkout…' : 'Lifetime — $299 one-time'}
-          </button>
-      </div>
-
-      <p className="text-xs  text-zinc-300/80 mt-3 text-center">
-          Secure checkout powered by Stripe. Cancel anytime.
-      </p>
+function PlanColumn({
+  name,
+  priceLabel,
+  caption,
+  features,
+  prefix,
+  highlight,
+}: {
+  name: string;
+  priceLabel: string;
+  caption: string;
+  features: string[];
+  prefix?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`rounded-panel border p-4 ${highlight ? 'border-gold/45 bg-white/75' : 'border-gold-line bg-white/50'}`}>
+      <p className="text-sm font-bold text-ink">{name}</p>
+      <p className="bdm-figure-lg mt-1">{priceLabel}</p>
+      <p className="mt-1 text-xs text-muted">{caption}</p>
+      {prefix && <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-gold-dark">{prefix}</p>}
+      <ul className="mt-2 space-y-1.5">
+        {features.map((f) => (
+          <li key={f} className="flex items-start gap-2 text-[13px] leading-relaxed text-ink">
+            <span aria-hidden className="mt-0.5 text-gold">✓</span>
+            {f}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

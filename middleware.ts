@@ -43,6 +43,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const protectedPaths = [
+    '/b/',
+    '/onboarding',
+    '/command/portfolio',
     '/command/dashboard',
     '/command/onboarding',
     '/command/debt',
@@ -60,8 +63,8 @@ export async function middleware(request: NextRequest) {
   );
 
   if (isProtectedPath && !user) {
-    const redirectUrl = new URL('/command', request.url);
-    redirectUrl.searchParams.set('auth', 'required');
+    const redirectUrl = new URL('/auth/sign-in', request.url);
+    redirectUrl.searchParams.set('next', request.nextUrl.pathname);
     return NextResponse.redirect(redirectUrl);
   }
 

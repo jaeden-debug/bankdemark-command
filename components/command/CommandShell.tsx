@@ -77,23 +77,17 @@ export default function CommandShell({ children, requiresAuth = true }: CommandS
       const result = await supabase.auth.signUp({ email: auth.email, password: auth.password });
       error = result.error;
       if (!error && result.data.user) {
-        // Insert stub profile
-        await supabase.from('profiles').upsert({
-          id: result.data.user.id,
-          email: auth.email,
-          first_name: '',
-          age: 0,
-          country: 'Canada',
-          user_type: 'individual',
-          household_type: 'single',
-          business_owner: false,
-        });
-        window.location.href = '/command/onboarding';
+        // The profile row is created by the `handle_new_user` trigger on
+        // auth.users. Do not upsert it from the client: `id` and the
+        // billing columns are no longer client-writable, so an upsert
+        // here fails with a permission error.
+        window.location.href = '/onboarding';
       }
     } else {
       const result = await supabase.auth.signInWithPassword({ email: auth.email, password: auth.password });
       error = result.error;
-      if (!error) window.location.href = '/command/dashboard';
+      // Portfolio sends you to onboarding if you have no business yet.
+      if (!error) window.location.href = '/command/portfolio';
     }
 
     if (error) {
@@ -106,7 +100,7 @@ export default function CommandShell({ children, requiresAuth = true }: CommandS
     if (!loading && user && typeof window !== 'undefined') {
       const path = window.location.pathname;
       if (path === '/command' || path === '/command/') {
-        window.location.href = '/command/dashboard';
+        window.location.href = '/command/portfolio';
       }
     }
   }, [loading, user]);

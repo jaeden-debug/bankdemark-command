@@ -1,494 +1,273 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* =========================================================
+   BANKDEMARK COMMAND — application design system
+   Tokens mirror bankdemark.com so Command reads as the same brand.
+   ========================================================= */
+
 :root {
-  --surface-950: #080C14;
-  --surface-900: #0D1117;
-  --surface-800: #131923;
-  --surface-700: #1A2332;
-  --surface-600: #22304A;
-  --brand-green: #00D084;
-  --brand-gold: #F5C842;
-  --brand-blue: #3B82F6;
+  --bdm-ink: #0b1220;
+  --bdm-muted: #667085;
+  --bdm-gold: #c6a24a;
+  --bdm-gold-light: #efd58a;
+  --bdm-gold-dark: #9f7b2e;
+  --bdm-cream: #fbf7ef;
+  --bdm-soft: #f7f3ea;
+  --bdm-border: rgba(198, 162, 74, 0.18);
+  --bdm-card: rgba(255, 255, 255, 0.72);
+  --bdm-positive: #1d7a53;
+  --bdm-negative: #b3261e;
+  --bdm-caution: #a8730f;
+
+  --app-sidebar-w: 248px;
+  --app-header-h: 64px;
+  --app-mobile-nav-h: 64px;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-html {
-  scroll-behavior: smooth;
- -webkit-text-size-adjust: 100%;
-text-size-adjust: 100%;
-}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 
 body {
-  background-color: var(--surface-950);
-  color: #E2E8F0;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  min-height: 100dvh;
+  color: var(--bdm-ink);
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  min-height: 100vh;
+  background:
+    radial-gradient(circle at 16% 6%, rgba(198, 162, 74, 0.18), transparent 34%),
+    radial-gradient(circle at 92% 14%, rgba(11, 18, 32, 0.06), transparent 28%),
+    linear-gradient(180deg, #fbf7ef 0%, #f4efe5 46%, #fbf7ef 100%);
+  background-attachment: fixed;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--surface-900);
-}
+/* Never let a financial table push the page sideways. */
+body, #__next { overflow-x: hidden; }
+
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+::selection { background: rgba(198, 162, 74, 0.28); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #2C3E5A;
-  border-radius: 3px;
+  background: rgba(11, 18, 32, 0.14);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #3B5070;
+::-webkit-scrollbar-thumb:hover { background: rgba(11, 18, 32, 0.24); background-clip: content-box; }
+
+/* Visible focus everywhere — a financial app must be keyboard-usable. */
+:focus-visible {
+  outline: 2px solid var(--bdm-gold-dark);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
-/* Selection */
-::selection {
-  background: rgba(0, 208, 132, 0.25);
-  color: #fff;
+@layer components {
+  /* ── Surfaces ───────────────────────────────────────── */
+  .bdm-card {
+    @apply rounded-card border border-gold-line bg-paper shadow-card backdrop-blur-[14px];
+  }
+  .bdm-card-interactive {
+    @apply bdm-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-card-hover hover:border-gold/35;
+  }
+  .bdm-panel {
+    @apply rounded-panel border border-gold-line bg-white/60 backdrop-blur-[10px];
+  }
+
+  /* ── Typography ─────────────────────────────────────── */
+  .bdm-eyebrow {
+    @apply text-[11px] font-bold uppercase tracking-[0.14em] text-muted;
+  }
+  .bdm-h1 { @apply text-2xl font-extrabold tracking-tight2 text-ink sm:text-[28px]; }
+  .bdm-h2 { @apply text-lg font-bold tracking-tight2 text-ink; }
+  .bdm-sub { @apply text-sm leading-relaxed text-muted; }
+
+  /* Money must always use tabular figures so columns align. */
+  .bdm-figure {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'ss01' 1;
+    @apply font-extrabold tracking-tight2 text-ink;
+  }
+  .bdm-figure-xl { @apply bdm-figure text-[30px] leading-none sm:text-[34px]; }
+  .bdm-figure-lg { @apply bdm-figure text-[22px] leading-none; }
+  .bdm-num { font-variant-numeric: tabular-nums; }
+
+  /* ── Buttons ────────────────────────────────────────── */
+  .bdm-btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-pill px-4 py-2.5
+           text-sm font-semibold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-55;
+    min-height: 42px;
+  }
+  .bdm-btn-primary {
+    @apply bdm-btn bg-ink text-cream hover:bg-[#16233a] active:scale-[0.985];
+  }
+  .bdm-btn-gold {
+    @apply bdm-btn text-ink;
+    background: linear-gradient(135deg, #c6a24a 0%, #efd58a 100%);
+    box-shadow: 0 8px 24px rgba(198, 162, 74, 0.28);
+  }
+  .bdm-btn-gold:hover { filter: brightness(1.05); }
+  .bdm-btn-secondary {
+    @apply bdm-btn border border-gold-line bg-white/70 text-ink hover:border-gold/40 hover:bg-white;
+  }
+  .bdm-btn-ghost {
+    @apply bdm-btn text-muted hover:bg-ink/[0.05] hover:text-ink;
+  }
+  .bdm-btn-danger {
+    @apply bdm-btn border border-negative/25 bg-negative-soft text-negative hover:bg-negative/15;
+  }
+  .bdm-btn-sm { @apply px-3 py-1.5 text-[13px]; min-height: 34px; }
+
+  /* ── Form controls ──────────────────────────────────── */
+  .bdm-label { @apply mb-1.5 block text-[13px] font-semibold text-ink; }
+  .bdm-hint  { @apply mt-1 block text-xs leading-relaxed text-muted; }
+  .bdm-input, .bdm-select, .bdm-textarea {
+    @apply w-full rounded-control border border-gold-line bg-white/85 px-3.5 py-2.5 text-[15px]
+           text-ink shadow-inset transition-colors placeholder:text-muted/60
+           focus:border-gold focus:bg-white focus:outline-none;
+    min-height: 44px; /* comfortable touch target */
+  }
+  .bdm-textarea { min-height: 90px; }
+  .bdm-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23667085'%3E%3Cpath d='M5.5 7.5 10 12l4.5-4.5' stroke='%23667085' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 18px;
+    padding-right: 38px;
+  }
+  .bdm-input-error { @apply border-negative/50 bg-negative-soft; }
+
+  /* ── Badges & signals ───────────────────────────────── */
+  .bdm-badge {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-bold
+           uppercase tracking-[0.08em];
+  }
+  .bdm-badge-neutral  { @apply bdm-badge bg-ink/[0.06] text-muted; }
+  .bdm-badge-gold     { @apply bdm-badge bg-gold-tint text-gold-dark; }
+  .bdm-badge-positive { @apply bdm-badge bg-positive-soft text-positive; }
+  .bdm-badge-negative { @apply bdm-badge bg-negative-soft text-negative; }
+  .bdm-badge-caution  { @apply bdm-badge bg-caution-soft text-caution; }
+
+  .bdm-delta-up   { @apply text-positive; }
+  .bdm-delta-down { @apply text-negative; }
+
+  /* ── Layout ─────────────────────────────────────────── */
+  .bdm-page { @apply mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 lg:py-8; }
+  .bdm-section { @apply space-y-3; }
+
+  /* Any wide content scrolls inside itself, never the page. */
+  .bdm-scroll-x {
+    @apply -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0;
+    scrollbar-width: thin;
+  }
+
+  .bdm-divider { @apply h-px w-full bg-gold-line; }
+
+  /* ── Skeletons ──────────────────────────────────────── */
+  .bdm-skeleton {
+    @apply rounded-lg bg-ink/[0.05];
+    background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.65) 50%, transparent 100%);
+    background-size: 500px 100%;
+    background-repeat: no-repeat;
+    animation: shimmer 1.4s linear infinite;
+  }
+  @keyframes shimmer {
+    0%   { background-position: -500px 0; }
+    100% { background-position: 500px 0; }
+  }
 }
 
-/* Glass card utility */
-.glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
-}
-.glass-card:hover {
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.12);
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-/* Score ring animation */
-@keyframes ring-fill {
-  from { stroke-dashoffset: 339.29; }
-}
-
-/* Print styles for reports */
+/* Print: reports should come out clean. */
 @media print {
-  body {
-    background: #fff !important;
-    color: #111 !important;
-  }
-  .no-print {
-    display: none !important;
-  }
-  .print-card {
-    break-inside: avoid;
-    border: 1px solid #e2e8f0 !important;
-    background: #f8fafc !important;
-  }
-  .print-white {
-    background: #fff !important;
-    color: #111 !important;
-  }
-}
-
-/* Input styles */
-.cmd-input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: #E2E8F0;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  font-size: 0.9375rem;
-  outline: none;
-}
-.cmd-input:focus {
-  border-color: rgba(0, 208, 132, 0.5);
-  box-shadow: 0 0 0 3px rgba(0, 208, 132, 0.1);
-}
-.cmd-input::placeholder {
-  color: #4A5568;
-}
-.cmd-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Select styles */
-.cmd-select {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: #E2E8F0;
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  font-size: 0.9375rem;
-  outline: none;
-  appearance: none;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-}
-.cmd-select:focus {
-  border-color: rgba(0, 208, 132, 0.5);
-  box-shadow: 0 0 0 3px rgba(0, 208, 132, 0.1);
-}
-.cmd-select option {
-  background: #131923;
-  color: #E2E8F0;
-}
-
-/* Button styles */
-.cmd-btn-primary {
-  background: linear-gradient(135deg, #00D084, #00A866);
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  padding: 0.75rem 1.5rem;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  cursor: pointer;
-  transition: opacity 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
-  box-shadow: 0 4px 16px rgba(0, 208, 132, 0.3);
-}
-.cmd-btn-primary:hover {
-  opacity: 0.9;
-  box-shadow: 0 6px 20px rgba(0, 208, 132, 0.4);
-}
-.cmd-btn-primary:active {
-  transform: scale(0.98);
-}
-.cmd-btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.cmd-btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  color: #CBD5E0;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 0.75rem 1.5rem;
-  font-weight: 500;
-  font-size: 0.9375rem;
-  cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-.cmd-btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
-.cmd-btn-ghost {
-  background: transparent;
-  color: #94A3B8;
-  border: none;
-  border-radius: 8px;
-  padding: 0.5rem 0.875rem;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease;
-}
-.cmd-btn-ghost:hover {
-  color: #E2E8F0;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-/* Score color classes */
-.score-critical { color: #EF4444; }
-.score-vulnerable { color: #F97316; }
-.score-stable { color: #EAB308; }
-.score-strong { color: #22C55E; }
-.score-elite { color: #00D084; }
-
-/* Metric status colors */
-.status-good { color: #00D084; }
-.status-warn { color: #F5C842; }
-.status-danger { color: #EF4444; }
-.status-neutral { color: #94A3B8; }
-
-/* Label */
-.cmd-label {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #64748B;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.375rem;
-  display: block;
-}
-
-/* Animate in */
-.animate-in {
-  animation: slideUp 0.4s ease-out both;
+  body { background: #fff; }
+  .bdm-no-print { display: none !important; }
+  .bdm-card { box-shadow: none; border-color: #ddd; background: #fff; }
+  @page { margin: 16mm; }
 }
 
 /* =========================================================
-   BANKDEMARK COMMAND — AI REPORT RESPONSE RENDERING
-========================================================= */
+   LEGACY COMPATIBILITY SHIM
 
-.bdm-command-shell .ai-command-report {
-  color: var(--bdm-ink);
+   app/command/* was built for a dark #080C14 theme that has been
+   retired. Rather than ship unreadable white-on-cream screens while
+   those routes are rewritten, the dark-theme utilities they use are
+   remapped onto the BankDeMark palette.
+
+   None of these class names appear in new code (which uses text-ink,
+   text-muted, bdm-card, etc.), so these overrides cannot affect the
+   new Command Centre. Delete this block when app/command/* goes.
+   ========================================================= */
+
+/* Class aliases: the legacy markup's own component classes. */
+@layer components {
+  .glass-card        { @apply bdm-card; }
+  .cmd-input         { @apply bdm-input; }
+  .cmd-select        { @apply bdm-select; }
+  .cmd-btn-primary   { @apply bdm-btn-primary; }
+  .cmd-btn-secondary { @apply bdm-btn-secondary; }
 }
 
-.bdm-command-shell .ai-command-report strong {
-  color: var(--bdm-ink);
-  font-weight: 900;
-}
+/* Text */
+.text-white      { color: var(--bdm-ink) !important; }
+.text-zinc-200,
+.text-zinc-300   { color: var(--bdm-ink) !important; }
+.text-zinc-400,
+.text-zinc-500,
+.text-zinc-600   { color: var(--bdm-muted) !important; }
+.text-zinc-800   { color: var(--bdm-ink) !important; }
 
-.bdm-command-shell .ai-command-report p:first-child {
-  margin-top: 0;
-}
+.text-brand-green,
+.text-emerald-300,
+.text-emerald-400 { color: var(--bdm-positive) !important; }
+.text-yellow-300,
+.text-yellow-400,
+.text-brand-gold  { color: var(--bdm-gold-dark) !important; }
+.text-red-300,
+.text-red-400,
+.text-red-500     { color: var(--bdm-negative) !important; }
 
-.bdm-command-shell .ai-command-report p:last-child {
-  margin-bottom: 0;
-}
+/* Surfaces: the dark theme used translucent white over near-black.
+   On cream those read as invisible, so invert to translucent ink. */
+.bg-white\/3,
+.bg-white\/4,
+.bg-white\/5,
+.bg-white\/10    { background-color: rgba(255,255,255,0.62) !important; }
+.bg-surface-950,
+.bg-surface-900,
+.bg-surface-800   { background-color: transparent !important; }
 
-/* =========================================================
-   BANKDEMARK COMMAND — CHATGPT-STYLE AI MARKDOWN
-========================================================= */
+.border-white\/5,
+.border-white\/6,
+.border-white\/8,
+.border-white\/10,
+.border-white\/14,
+.border-white\/16 { border-color: var(--bdm-border) !important; }
 
-.bdm-command-shell .ai-markdown-response {
-  color: var(--bdm-ink);
-}
+.bg-brand-green\/5,
+.bg-brand-green\/10,
+.bg-brand-green\/15,
+.bg-brand-green\/20 { background-color: rgba(29,122,83,0.10) !important; }
 
-.bdm-command-shell .ai-md-h1,
-.bdm-command-shell .ai-md-h2,
-.bdm-command-shell .ai-md-h3 {
-  margin-top: 1.35rem;
-  margin-bottom: .65rem;
-  color: var(--bdm-ink);
-  font-weight: 900;
-  letter-spacing: -0.035em;
-  line-height: 1.12;
-}
-
-.bdm-command-shell .ai-md-h1 {
-  font-size: 1.35rem;
-}
-
-.bdm-command-shell .ai-md-h2 {
-  font-size: 1.15rem;
-}
-
-.bdm-command-shell .ai-md-h3 {
-  font-size: 1rem;
-}
-
-.bdm-command-shell .ai-md-p {
-  margin: .65rem 0;
-  color: #263244;
-  font-size: .95rem;
-  line-height: 1.82;
-}
-
-.bdm-command-shell .ai-md-ul,
-.bdm-command-shell .ai-md-ol {
-  margin: .8rem 0 1rem 0;
-  padding-left: 1.25rem;
-  color: #263244;
-}
-
-.bdm-command-shell .ai-md-ul {
-  list-style: disc;
-}
-
-.bdm-command-shell .ai-md-ol {
-  list-style: decimal;
-}
-
-.bdm-command-shell .ai-md-li {
-  margin: .4rem 0;
-  padding-left: .25rem;
-  color: #263244;
-  font-size: .95rem;
-  line-height: 1.7;
-}
-
-.bdm-command-shell .ai-md-strong {
-  color: var(--bdm-ink);
-  font-weight: 850;
-}
-
-.bdm-command-shell .ai-md-divider {
-  height: 1px;
-  margin: 1.4rem 0;
-  background: linear-gradient(90deg, transparent, rgba(198,162,74,.42), transparent);
-}
-
-.bdm-command-shell .ai-md-quote {
-  margin: 1rem 0;
-  border-left: 3px solid var(--bdm-gold);
-  border-radius: 0 14px 14px 0;
-  background: rgba(198,162,74,.08);
-  padding: .85rem 1rem;
-  color: var(--bdm-ink);
-}
-
-.bdm-command-shell .ai-md-table-wrap {
-  margin: 1rem 0;
-  overflow-x: auto;
-  border: 1px solid rgba(198,162,74,.18);
-  border-radius: 16px;
-  background: rgba(255,255,255,.55);
-}
-
-.bdm-command-shell .ai-md-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: .88rem;
-}
-
-.bdm-command-shell .ai-md-th {
-  background: rgba(198,162,74,.12);
-  color: var(--bdm-ink);
-  font-weight: 900;
-  text-align: left;
-  padding: .75rem;
-  border-bottom: 1px solid rgba(198,162,74,.16);
-}
-
-.bdm-command-shell .ai-md-td {
-  padding: .75rem;
-  border-bottom: 1px solid rgba(198,162,74,.12);
-  color: #263244;
-}
-
-.bdm-command-shell .ai-md-code {
-  border: 1px solid rgba(198,162,74,.18);
-  border-radius: 8px;
-  background: rgba(198,162,74,.08);
-  padding: .12rem .35rem;
-  color: var(--bdm-ink);
-  font-size: .86em;
-}
-
-.bdm-command-shell .ai-type-caret {
-  display: inline-block;
-  width: 7px;
-  height: 1rem;
-  margin-left: 2px;
-  transform: translateY(2px);
-  background: var(--bdm-gold);
-  animation: aiCaretBlink .8s infinite;
-}
-
-@keyframes aiCaretBlink {
-  0%, 45% { opacity: 1; }
-  46%, 100% { opacity: 0; }
-}
-
-.bdm-command-shell .ai-mini-chart {
-  margin-top: 1.2rem;
-  border: 1px solid rgba(198,162,74,.18);
-  border-radius: 18px;
-  background: rgba(251,247,239,.72);
-  padding: 1rem;
-}
-
-.bdm-command-shell .ai-mini-chart-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: .75rem;
-  margin-bottom: .85rem;
-}
-
-.bdm-command-shell .ai-mini-chart-head span {
-  color: var(--bdm-ink);
-  font-size: .76rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: .12em;
-}
-
-.bdm-command-shell .ai-mini-chart-head small {
-  color: var(--bdm-muted);
-  font-size: .68rem;
-}
-
-.bdm-command-shell .ai-mini-chart-row {
-  display: grid;
-  grid-template-columns: 76px 1fr auto;
-  align-items: center;
-  gap: .65rem;
-  margin: .5rem 0;
-}
-
-.bdm-command-shell .ai-mini-chart-label,
-.bdm-command-shell .ai-mini-chart-value {
-  color: #263244;
-  font-size: .74rem;
-  font-weight: 700;
-}
-
-.bdm-command-shell .ai-mini-chart-track {
-  height: 9px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(11,18,32,.08);
-}
-
-.bdm-command-shell .ai-mini-chart-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--bdm-gold), var(--bdm-gold-light));
-  box-shadow: 0 0 18px rgba(198,162,74,.24);
-}
-
-@media (max-width: 640px) {
-  .bdm-command-shell .ai-mini-chart-row {
-    grid-template-columns: 1fr;
-    gap: .35rem;
-  }
-}
-/* =========================================================
-   BANKDEMARK COMMAND — CHAT INPUT READABILITY FIX
-========================================================= */
-
-.bdm-command-shell textarea.cmd-input,
-.bdm-command-shell input.cmd-input {
-  color: #ffffff !important;
-  caret-color: #00D084;
-}
-
-.bdm-command-shell textarea.cmd-input::placeholder,
-.bdm-command-shell input.cmd-input::placeholder {
-  color: rgba(148, 163, 184, 0.72) !important;
-}
-
-/* Dark command readability fixes */
-.bdm-command-shell .ai-coach-footer-note {
-  color: rgba(203, 213, 225, 0.78) !important;
-}
-
-.bdm-command-shell aside nav a:not(.text-brand-green),
-.bdm-command-shell header a:not(.text-brand-green),
-.bdm-command-shell header button,
-.bdm-command-shell nav.fixed a:not(.text-brand-green),
-.bdm-command-shell nav.fixed button {
-  color: rgba(203, 213, 225, 0.86) !important;
-}
-
-.bdm-command-shell aside nav a:not(.text-brand-green):hover,
-.bdm-command-shell header a:not(.text-brand-green):hover,
-.bdm-command-shell header button:hover,
-.bdm-command-shell nav.fixed a:not(.text-brand-green):hover,
-.bdm-command-shell nav.fixed button:hover {
-  color: #ffffff !important;
-}
-
-.bdm-command-shell aside nav a.text-brand-green,
-.bdm-command-shell nav.fixed a.text-brand-green {
-  color: #00D084 !important;
-}
+/* Legacy hero used a light-on-dark gradient headline. */
+.legacy-hero-title { color: var(--bdm-ink) !important; -webkit-text-fill-color: var(--bdm-ink) !important; background: none !important; }

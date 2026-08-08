@@ -1,0 +1,41 @@
+project_id = "wzgtpygrgehcprxqppia"
+
+[auth]
+# The confirmation email previously redirected to a bare localhost:3000,
+# which fails whenever the dev server is not on that exact port. Production
+# is now the site URL, with local dev added as an explicit allowed redirect.
+site_url = "https://command.bankdemark.com"
+additional_redirect_urls = [
+  "https://command.bankdemark.com/**",
+  "https://bank-de-mark-app.vercel.app/**",
+  "http://localhost:3000/**",
+  "http://127.0.0.1:3000/**",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+minimum_password_length = 8
+password_requirements = "lower_upper_letters_digits"
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = true
+secure_password_change = true
+max_frequency = "20s"
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.confirmation]
+subject = "Confirm your BankDeMark Command account"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.magic_link]
+subject = "Your BankDeMark Command sign-in link"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your BankDeMark Command password"
+content_path = "./supabase/templates/recovery.html"
