@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { requireBusiness } from '@/lib/services/context';
 import { getInvoiceSettings, listCustomFields, listTaxRates } from '@/lib/services/invoices';
-import { isEnabled, planFor } from '@/lib/services/entitlements';
+import { getAccess, can } from '@/lib/services/access';
 import InvoiceSettingsForm from '@/components/bdm/InvoiceSettingsForm';
+import LogoUpload from '@/components/bdm/LogoUpload';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +21,17 @@ export default async function InvoiceSettingsPage({
     ctx.db.from('profiles').select('plan').eq('id', ctx.userId).maybeSingle(),
   ]);
 
-  const plan = profileRes.data?.plan ?? 'free';
+  const access = await getAccess(ctx);
   const base = `/b/${ctx.businessId}/invoices`;
+
+  // Short-lived signed URL — the bucket is private.
+  let logoUrl: string | null = null;
+  if (settings.logo_path) {
+    const { data } = await ctx.db.storage
+      .from('business-logos')
+      .createSignedUrl(settings.logo_path, 600);
+    logoUrl = data?.signedUrl ?? null;
+  }
 
   return (
     <div className="bdm-page max-w-3xl">
@@ -35,14 +45,24 @@ export default async function InvoiceSettingsPage({
         </div>
       </header>
 
+      <section className="bdm-card mb-4 p-5">
+        <h2 className="bdm-h2 mb-3">Branding</h2>
+        <LogoUpload
+          businessId={ctx.businessId}
+          initialUrl={logoUrl}
+          canBrand={can(access, 'logoBranding')}
+          planName={access.plan.name}
+        />
+      </section>
+
       <InvoiceSettingsForm
         businessId={ctx.businessId}
         settings={settings}
         customFields={customFields}
         taxRates={taxRates}
-        planName={planFor(plan).name}
-        canBrand={isEnabled(plan, 'invoice_branding')}
-        canTemplate={isEnabled(plan, 'invoice_templates')}
+        planName={access.plan.name}
+        canBrand={can(access, 'whiteLabel')}
+        canTemplate={true}
         jurisdiction={
           ctx.business.tax_jurisdiction ??
           (ctx.business.region

@@ -25,6 +25,7 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     lines: resolved.lines,
     business: resolved.business,
     client: resolved.client,
+    logoDataUri: resolved.logoDataUri,
   });
   const filename = `${(resolved.invoice.number ?? 'invoice').replace(/[^\w-]/g, '')}.pdf`;
 

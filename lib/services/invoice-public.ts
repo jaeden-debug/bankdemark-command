@@ -27,6 +27,7 @@ export interface ResolvedShare {
   lines: InvoiceLineRow[];
   business: BusinessSnapshot;
   client: ClientSnapshot;
+  logoDataUri: string | null;
 }
 
 /** Tokens are 32 random bytes, base64url. Anything else is not one. */
@@ -102,12 +103,17 @@ export async function resolveShareToken(token: string): Promise<ResolvedShare | 
     return null;
   }
 
+  const { loadLogoDataUri } = await import('./invoice-render');
+
   return {
     businessId: invoice.business_id,
     invoice,
     lines: (lineData ?? []) as unknown as InvoiceLineRow[],
     business: invoice.issued_business_snapshot,
     client: invoice.issued_client_snapshot,
+    // Inlined: the bucket is private, so the client's browser could
+    // never fetch it, and the PDF renderer has no network.
+    logoDataUri: await loadLogoDataUri(invoice.issued_business_snapshot.logo_path, db),
   };
 }
 

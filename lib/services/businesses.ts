@@ -9,6 +9,7 @@
 
 import 'server-only';
 import { type AuthContext, type BusinessRole, requireUser } from './context';
+import { checkBusinessLimit } from './access';
 import { ServiceError, unwrap } from './errors';
 import { recordAudit } from './audit';
 import { checkQuota, planFor } from './entitlements';
@@ -103,6 +104,12 @@ export async function createBusiness(
   }
   if (!BUSINESS_TYPES.some((t) => t.id === input.businessType)) {
     throw new ServiceError('validation', 'Choose a business type.');
+  }
+
+  // Server-side plan limit. Founder accounts return unlimited.
+  const limit = await checkBusinessLimit(ctx);
+  if (!limit.allowed) {
+    throw new ServiceError('forbidden', limit.reason ?? 'Business limit reached for your plan.');
   }
 
   const currency = (input.baseCurrency ?? 'CAD').toUpperCase();

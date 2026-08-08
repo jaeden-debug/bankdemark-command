@@ -11,6 +11,7 @@ import 'server-only';
 import type { BusinessContext } from './context';
 import { ServiceError, assertOk, unwrap, unwrapMaybe, logError } from './errors';
 import { recordAudit, diffRecords, type ActorType, type DataSource } from './audit';
+import { checkClientLimit } from './access';
 
 export type CounterpartyKind = 'customer' | 'vendor' | 'supplier' | 'other';
 
@@ -132,6 +133,11 @@ export async function createCounterparty(
     }
     return existing;
   }
+
+  // Plan limit applies only to genuinely NEW clients — reactivating or
+  // reusing an existing one above is not a new resource.
+  const limit = await checkClientLimit(ctx);
+  if (!limit.allowed) throw new ServiceError('forbidden', limit.reason ?? 'Client limit reached.');
 
   const row = unwrap(
     await ctx.db

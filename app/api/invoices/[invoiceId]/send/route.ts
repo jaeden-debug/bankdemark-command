@@ -14,11 +14,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireBusiness } from '@/lib/services/context';
 import { ServiceError, logError, logEvent, toServiceError } from '@/lib/services/errors';
 import { getInvoice, logInvoiceEvent } from '@/lib/services/invoices';
-import { isEnabled } from '@/lib/services/entitlements';
+import { getAccess, can } from '@/lib/services/access';
 import { renderInvoiceHtml, renderInvoicePdf } from '@/lib/services/invoice-document';
-import { buildRenderable } from '@/lib/services/invoice-render';
+import { buildRenderable, loadLogoDataUri } from '@/lib/services/invoice-render';
 import { invoiceEmailHtml, invoiceEmailText } from '@/lib/services/invoice-email';
 import { formatMinor } from '@/lib/domain/money';
+import { sendEmail, emailConfig } from '@/lib/services/email';
+import { appOrigin, invoiceShareUrl } from '@/lib/config/app-url';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,18 +40,16 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
     const ctx = await requireBusiness(String(body.businessId), 'member');
     ctxRef = ctx;
 
-    const { data: profile } = await ctx.db
-      .from('profiles').select('plan').eq('id', ctx.userId).maybeSingle();
-    if (!isEnabled(profile?.plan ?? 'free', 'invoice_send')) {
+    const access = await getAccess(ctx);
+    if (!can(access, 'emailSending')) {
       throw new ServiceError('forbidden', 'Emailing invoices is not included in your plan.');
     }
 
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      throw new ServiceError(
-        'not_configured',
-        'Email sending is not configured on this deployment. Set RESEND_API_KEY to enable it.'
-      );
+    // Fail before claiming an idempotency slot, so a misconfigured
+    // deployment does not burn the user's send window.
+    const cfg = emailConfig();
+    if (!cfg.ok) {
+      throw new ServiceError('not_configured', `Email is not configured. ${cfg.reason}`);
     }
 
     const detail = await getInvoice(ctx, params.invoiceId);
@@ -108,14 +108,20 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
 
     // ── Build the document ──
     const renderable = buildRenderable(detail);
+    renderable.logoDataUri = await loadLogoDataUri(
+      renderable.business.logo_path,
+      ctx.db
+    );
     const docHtml = renderInvoiceHtml(renderable);
     const pdf = await renderInvoicePdf(docHtml);
 
     const business = renderable.business;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+    // Throws in production if the origin is unset or localhost, rather
+    // than mailing a client a link they cannot open.
+    appOrigin();
     const viewUrl =
-      invoice.share_token && !invoice.share_revoked_at && appUrl
-        ? `${appUrl}/i/${invoice.share_token}`
+      invoice.share_token && !invoice.share_revoked_at
+        ? invoiceShareUrl(invoice.share_token)
         : null;
 
     const amount = formatMinor(invoice.balance_minor || invoice.total_minor, invoice.currency, {
@@ -138,68 +144,58 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
     });
 
     // ── Send ──
-    const payload: Record<string, unknown> = {
-      from: `${sanitiseName(business.name)} <${process.env.RESEND_FROM_EMAIL ?? 'invoices@resend.dev'}>`,
-      to: [to],
-      subject,
-      html: emailHtml,
-      text: invoiceEmailText({
-        businessName: business.name,
-        clientName: renderable.client.name,
-        invoiceNumber: invoice.number ?? '',
-        amount,
-        currency: invoice.currency,
-        dueDate: invoice.due_date,
-        viewUrl,
-        message: body.message ? String(body.message) : null,
-      }),
-    };
-    if (cc) payload.cc = [cc];
-    // Resend v4+ uses camelCase. Getting this wrong silently drops the
-    // header, which is exactly what happened in the retired prototype.
-    if (business.email && EMAIL_RE.test(business.email)) payload.replyTo = business.email;
-    if (pdf.ok && pdf.pdf) {
-      payload.attachments = [
-        {
-          filename: `${(invoice.number ?? 'invoice').replace(/[^\w-]/g, '')}.pdf`,
-          content: pdf.pdf.toString('base64'),
-        },
-      ];
-    }
-
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const json = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
-
-    if (!res.ok) {
-      // Record the failure and do NOT mark the invoice sent.
+    let messageId: string | null = null;
+    try {
+      const sent = await sendEmail({
+        to,
+        cc,
+        replyTo: business.email,
+        fromName: business.name,
+        subject,
+        html: emailHtml,
+        text: invoiceEmailText({
+          businessName: business.name,
+          clientName: renderable.client.name,
+          invoiceNumber: invoice.number ?? '',
+          amount,
+          currency: invoice.currency,
+          dueDate: invoice.due_date,
+          viewUrl,
+          message: body.message ? String(body.message) : null,
+        }),
+        attachments:
+          pdf.ok && pdf.pdf
+            ? [{
+                filename: `${(invoice.number ?? 'invoice').replace(/[^\w-]/g, '')}.pdf`,
+                content: pdf.pdf,
+              }]
+            : undefined,
+        // Lets the webhook find this delivery row from a provider event.
+        tags: { invoice_id: invoice.id, delivery_id: deliveryId },
+      });
+      messageId = sent.messageId;
+    } catch (sendError) {
+      const se = toServiceError(sendError, 'send that invoice');
       await ctx.db
         .from('invoice_deliveries')
-        .update({ state: 'failed', error: json.message ?? `HTTP ${res.status}`, subject })
+        .update({ state: 'failed', error: se.message.slice(0, 500), subject })
         .eq('id', deliveryId);
-      await logInvoiceEvent(ctx, invoice.id, 'send_failed', {
-        to,
-        error: json.message ?? `HTTP ${res.status}`,
+      await logInvoiceEvent(ctx, invoice.id, 'send_failed', { to, error: se.message });
+      logError('invoice.send_failed', se, {
+        requestId, businessId: ctx.businessId, invoiceId: invoice.id,
       });
-      logError('invoice.send_failed', new Error(json.message ?? `HTTP ${res.status}`), {
-        requestId,
-        businessId: ctx.businessId,
-        invoiceId: invoice.id,
-      });
-      throw new ServiceError('upstream', json.message ?? 'The email provider rejected the message.');
+      throw se;
     }
 
     // Provider accepted it — only now is the invoice "sent".
     await ctx.db
       .from('invoice_deliveries')
-      .update({ state: 'sent', provider_message_id: json.id ?? null, subject })
+      .update({
+        state: 'sent',
+        provider_message_id: messageId,
+        subject,
+        last_event_at: new Date().toISOString(),
+      })
       .eq('id', deliveryId);
 
     // Never move a paid or partly paid invoice backwards to `sent`.
@@ -213,7 +209,7 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
     await logInvoiceEvent(ctx, invoice.id, 'sent', {
       to,
       cc,
-      provider_message_id: json.id ?? null,
+      provider_message_id: messageId,
       attachment: pdf.ok,
       // Surfaced honestly rather than pretending a PDF went out.
       attachment_skipped_reason: pdf.ok ? null : pdf.reason,
@@ -224,7 +220,7 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
     return NextResponse.json({
       ok: true,
       to,
-      messageId: json.id ?? null,
+      messageId,
       attached: pdf.ok,
       attachmentNote: pdf.ok
         ? null
@@ -245,9 +241,4 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
     logError('invoice.send_error', e, { requestId, route: '/api/invoices/[invoiceId]/send' });
     return NextResponse.json(e.toJSON(), { status: e.status });
   }
-}
-
-/** Keeps a business name safe inside an email From header. */
-function sanitiseName(name: string): string {
-  return name.replace(/[<>"\r\n]/g, '').trim().slice(0, 78) || 'Invoices';
 }

@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { ecosystemCookieOptions } from '@/lib/config/cookies';
 import { NextResponse, type NextRequest } from 'next/server';
 
 type CookieToSet = {
@@ -31,7 +32,7 @@ export async function middleware(request: NextRequest) {
           supabaseResponse = NextResponse.next({ request });
 
           cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options);
+            supabaseResponse.cookies.set(name, value, ecosystemCookieOptions(options));
           });
         },
       },

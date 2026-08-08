@@ -15,7 +15,7 @@ import { randomBytes } from 'node:crypto';
 import type { BusinessContext, Db } from './context';
 import { ServiceError, assertOk, unwrap, unwrapMaybe, logError } from './errors';
 import { recordAudit, diffRecords, type ActorType, type DataSource } from './audit';
-import { checkQuota, isEnabled } from './entitlements';
+import { getAccess, can, consumeUsage, releaseUsage, requireCapability } from './access';
 import { assertSafeMinor } from '@/lib/domain/money';
 import {
   computeInvoiceTotals,
@@ -320,16 +320,12 @@ export async function updateInvoiceSettings(
 
   // Branding and templates are entitlement-gated. Financial fields
   // never are — see the note in entitlements.ts.
-  const plan = await planOf(ctx);
-  if (update.show_bdm_credit === false && !isEnabled(plan, 'invoice_branding')) {
-    throw new ServiceError(
-      'forbidden',
-      'Removing the BankDeMark credit is included from the Starter plan.'
-    );
+  const access = await getAccess(ctx);
+  if (update.show_bdm_credit === false) {
+    requireCapability(access, 'whiteLabel', 'Removing the BankDeMark credit');
   }
-  if (update.template !== undefined && update.template !== before.template
-      && !isEnabled(plan, 'invoice_templates')) {
-    throw new ServiceError('forbidden', 'Invoice templates are included from the Starter plan.');
+  if (update.logo_path !== undefined && update.logo_path !== null) {
+    requireCapability(access, 'logoBranding', 'Adding your logo');
   }
 
   if (Object.keys(update).length === 0) return before;
@@ -364,11 +360,6 @@ export async function updateInvoiceSettings(
   return after;
 }
 
-async function planOf(ctx: BusinessContext): Promise<string> {
-  const { data } = await ctx.db.from('profiles').select('plan').eq('id', ctx.userId).maybeSingle();
-  return (data?.plan as string) ?? 'free';
-}
-
 // ── Create / update drafts ──────────────────────────────────
 
 export interface CreateInvoiceInput {
@@ -396,18 +387,9 @@ export async function createInvoice(
 ): Promise<{ invoice: InvoiceRow; lines: InvoiceLineRow[] }> {
   const settings = await getInvoiceSettings(ctx);
 
-  // Quota applies to CREATING invoices only. Reading, exporting and
-  // settling existing ones is never gated.
-  const plan = await planOf(ctx);
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  const { count } = await ctx.db
-    .from('invoices')
-    .select('id', { count: 'exact', head: true })
-    .eq('business_id', ctx.businessId)
-    .gte('created_at', monthStart.toISOString().slice(0, 10));
-
-  const quota = checkQuota(plan, 'invoices_per_month', count ?? 0);
+  // Metered, server-side, race-safe. Applies to CREATING invoices only —
+  // reading, exporting and settling existing ones is never gated.
+  const quota = await consumeUsage(ctx, 'invoices');
   if (!quota.allowed) {
     throw new ServiceError('forbidden', quota.reason ?? 'Invoice limit reached for this month.');
   }
@@ -439,7 +421,9 @@ export async function createInvoice(
     discountValue: input.discountValue,
   });
 
-  const invoice = unwrap(
+  let invoice: InvoiceRow;
+  try {
+    invoice = unwrap(
     await ctx.db
       .from('invoices')
       .insert({
@@ -473,6 +457,11 @@ export async function createInvoice(
       .single(),
     'create that invoice'
   ) as unknown as InvoiceRow;
+  } catch (error) {
+    // The invoice was not created, so the reservation must not be spent.
+    await releaseUsage(ctx, 'invoices');
+    throw error;
+  }
 
   const lineRows = await replaceLines(ctx, invoice.id, totals);
 
@@ -888,6 +877,7 @@ export async function createCreditNote(
   if (!trimmed) {
     throw new ServiceError('validation', 'Give a reason for the credit note.');
   }
+  requireCapability(await getAccess(ctx), 'creditNotes', 'Credit notes');
 
   const lines = await loadLines(ctx.db, invoiceId);
 

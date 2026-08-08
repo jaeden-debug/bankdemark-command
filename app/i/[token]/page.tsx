@@ -34,13 +34,13 @@ export default async function PublicInvoicePage({
   const resolved = await resolveShareToken(params.token);
   if (!resolved) notFound();
 
-  const { invoice, lines, business, client } = resolved;
+  const { invoice, lines, business, client, logoDataUri } = resolved;
 
   // Fire-and-forget view tracking. Deliberately awaited so a failure is
   // logged rather than becoming an unhandled rejection.
   await recordShareView(resolved.businessId, invoice.id);
 
-  const html = renderInvoiceHtml({ invoice, lines, business, client });
+  const html = renderInvoiceHtml({ invoice, lines, business, client, logoDataUri });
   const amount = formatMinor(
     invoice.balance_minor > 0 ? invoice.balance_minor : invoice.total_minor,
     invoice.currency,

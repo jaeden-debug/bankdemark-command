@@ -9,13 +9,32 @@
 import Link from 'next/link';
 import { requireBusiness } from '@/lib/services/context';
 import { getInvoice } from '@/lib/services/invoices';
-import { isEnabled } from '@/lib/services/entitlements';
+import { getAccess, can } from '@/lib/services/access';
 import { formatMinor } from '@/lib/domain/money';
 import { daysOverdue } from '@/lib/domain/invoice';
+import { appOriginOrNull, invoiceShareUrl } from '@/lib/config/app-url';
 import InvoiceStatusBadge from '@/components/bdm/InvoiceStatusBadge';
 import InvoiceActions from '@/components/bdm/InvoiceActions';
 
 export const dynamic = 'force-dynamic';
+
+// "Sent" means the provider accepted it. "Delivered" means it arrived.
+// These are never conflated.
+const DELIVERY_LABEL: Record<string, string> = {
+  queued: 'Queued',
+  sent: 'Sent',
+  delivered: 'Delivered',
+  bounced: 'Bounced',
+  failed: 'Failed',
+};
+
+const DELIVERY_BADGE: Record<string, string> = {
+  queued: 'bdm-badge-neutral',
+  sent: 'bdm-badge-gold',
+  delivered: 'bdm-badge-positive',
+  bounced: 'bdm-badge-negative',
+  failed: 'bdm-badge-negative',
+};
 
 const EVENT_LABELS: Record<string, string> = {
   created: 'Created',
@@ -27,6 +46,9 @@ const EVENT_LABELS: Record<string, string> = {
   payment_recorded: 'Payment recorded',
   payment_removed: 'Payment removed',
   voided: 'Voided',
+  email_delivered: 'Email delivered',
+  email_bounced: 'Email bounced',
+  email_failed: 'Email failed',
   revised: 'Revised',
   credit_note_created: 'Credit note created',
   share_revoked: 'Client link revoked',
@@ -44,27 +66,32 @@ export default async function InvoiceDetailPage({
     params.invoiceId
   );
 
-  const { data: profile } = await ctx.db
-    .from('profiles')
-    .select('plan')
-    .eq('id', ctx.userId)
-    .maybeSingle();
-  const plan = profile?.plan ?? 'free';
+  const access = await getAccess(ctx);
+
+  // Provider truth about the last send attempt.
+  const { data: deliveries } = await ctx.db
+    .from('invoice_deliveries')
+    .select('id, to_email, state, error, bounce_type, created_at, delivered_at, bounced_at, failed_at')
+    .eq('invoice_id', params.invoiceId)
+    .order('created_at', { ascending: false })
+    .limit(5);
 
   const currency = invoice.currency;
   const snapshot = invoice.issued_business_snapshot;
   const clientSnapshot = invoice.issued_client_snapshot;
   const base = `/b/${ctx.businessId}/invoices`;
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  // Non-throwing: this page must still render if the origin is
+  // misconfigured, and the copy-link button simply will not appear.
+  const originOk = appOriginOrNull() !== null;
   const shareUrl =
-    invoice.share_token && !invoice.share_revoked_at && appUrl
-      ? `${appUrl}/i/${invoice.share_token}`
+    invoice.share_token && !invoice.share_revoked_at && originOk
+      ? invoiceShareUrl(invoice.share_token)
       : null;
 
   const clientEmail = counterparty?.email ?? null;
-  const emailConfigured = Boolean(process.env.RESEND_API_KEY);
-  const sendAllowed = isEnabled(plan, 'invoice_send');
+  const emailConfigured = Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
+  const sendAllowed = can(access, 'emailSending');
 
   const emailLockedReason = !clientEmail
     ? 'This client has no email address on file, so the invoice cannot be emailed.'
@@ -311,6 +338,35 @@ export default async function InvoiceDetailPage({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {/* ── Delivery ── */}
+      {deliveries && deliveries.length > 0 && (
+        <section className="bdm-card mb-4 p-5">
+          <h2 className="bdm-h2 mb-3">Email delivery</h2>
+          <ul className="space-y-2">
+            {deliveries.map((d) => (
+              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-gold-line/50 pb-2 last:border-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{d.to_email}</p>
+                  <p className="text-xs text-muted">
+                    {new Date(d.created_at).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {d.error ? ` · ${d.error}` : ''}
+                  </p>
+                </div>
+                <span className={DELIVERY_BADGE[d.state] ?? 'bdm-badge-neutral'}>
+                  {DELIVERY_LABEL[d.state] ?? d.state}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!can(access, 'deliveryTracking') && (
+            <p className="bdm-hint mt-3">
+              Delivered and bounced tracking is included from Starter. Until then this shows only
+              whether the send was accepted.
+            </p>
+          )}
         </section>
       )}
 

@@ -9,6 +9,7 @@
 
 import 'server-only';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { ecosystemCookieOptions } from '@/lib/config/cookies';
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { ServiceError } from './errors';
@@ -42,7 +43,7 @@ export function serverDb(): Db {
         setAll(list) {
           try {
             list.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options as CookieOptions)
+              cookieStore.set(name, value, ecosystemCookieOptions(options as CookieOptions))
             );
           } catch {
             // Called from a Server Component; middleware refreshes the session.

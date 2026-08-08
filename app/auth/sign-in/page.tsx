@@ -1,30 +1,52 @@
 import Link from 'next/link';
-import AuthForm from '@/components/bdm/AuthForm';
+import MagicLinkForm from '@/components/bdm/MagicLinkForm';
 
-export const metadata = {
-  title: 'Sign in · BankDeMark Command',
-  robots: { index: false, follow: false },
+export const dynamic = 'force-dynamic';
+
+const ERRORS: Record<string, string> = {
+  link_expired:
+    'That sign-in link has expired or was already used. Links work once and last an hour — request a new one below.',
+  link_invalid: 'That sign-in link was not valid. Request a new one below.',
 };
 
-export default function SignInPage({ searchParams }: { searchParams: { mode?: string; next?: string } }) {
-  const mode = searchParams.mode === 'sign-up' ? 'sign-up' : 'sign-in';
+export default function SignInPage({
+  searchParams,
+}: {
+  searchParams: { next?: string; error?: string; signed_out?: string };
+}) {
+  const error = searchParams.error ? ERRORS[searchParams.error] ?? ERRORS.link_invalid : null;
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-      <header className="mb-6 text-center">
-        <Link href="/command" className="text-[22px] font-extrabold tracking-brand">
-          <span className="text-ink">Bank</span>
-          <span className="text-gold">DeMark</span>
-        </Link>
-        <p className="mt-0.5 text-[11px] font-bold uppercase tracking-[0.18em] text-muted">Command</p>
-      </header>
+    <main className="flex min-h-dvh items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md">
+        <div className="mb-7 text-center">
+          <Link href="/" className="text-[22px] font-extrabold tracking-brand">
+            <span className="text-ink">Bank</span>
+            <span className="text-gold">DeMark</span>
+          </Link>
+          <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-muted">
+            Invoicing
+          </p>
+        </div>
 
-      <AuthForm initialMode={mode} next={searchParams.next} />
+        {error && (
+          <div role="alert" className="mb-4 rounded-panel border border-caution/30 bg-caution-soft p-4">
+            <p className="text-sm font-semibold text-caution">{error}</p>
+          </div>
+        )}
 
-      <p className="mt-5 text-center text-xs leading-relaxed text-muted">
-        BankDeMark Command organises your business finances. It is not an accountant, bookkeeper or
-        tax preparer.
-      </p>
-    </div>
+        {searchParams.signed_out && !error && (
+          <div role="status" className="mb-4 rounded-panel border border-gold-line bg-white/70 p-4">
+            <p className="text-sm font-semibold text-ink">You&rsquo;re signed out.</p>
+          </div>
+        )}
+
+        <MagicLinkForm next={searchParams.next} />
+
+        <p className="mt-6 text-center text-xs text-muted">
+          Create and send professional invoices. Get paid faster.
+        </p>
+      </div>
+    </main>
   );
 }

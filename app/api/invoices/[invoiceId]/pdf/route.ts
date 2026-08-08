@@ -12,10 +12,12 @@ import { requireBusiness } from '@/lib/services/context';
 import { ServiceError, logError, logEvent, toServiceError } from '@/lib/services/errors';
 import { getInvoice } from '@/lib/services/invoices';
 import { renderInvoiceHtml, renderInvoicePdf } from '@/lib/services/invoice-document';
-import { buildRenderable } from '@/lib/services/invoice-render';
+import { buildRenderable, loadLogoDataUri } from '@/lib/services/invoice-render';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Chromium cold start on serverless needs headroom.
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest, { params }: { params: { invoiceId: string } }) {
   try {
@@ -34,6 +36,10 @@ export async function GET(req: NextRequest, { params }: { params: { invoiceId: s
     }
 
     const renderable = buildRenderable(detail);
+    renderable.logoDataUri = await loadLogoDataUri(
+      renderable.business.logo_path,
+      ctx.db
+    );
     const html = renderInvoiceHtml(renderable);
     const filename = `${(detail.invoice.number ?? 'invoice').replace(/[^\w-]/g, '')}.pdf`;
 

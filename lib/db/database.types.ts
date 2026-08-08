@@ -1201,14 +1201,20 @@ export type Database = {
       }
       invoice_deliveries: {
         Row: {
+          bounce_type: string | null
+          bounced_at: string | null
           business_id: string
           cc_email: string | null
           channel: string
           created_at: string
+          delivered_at: string | null
           error: string | null
+          failed_at: string | null
           id: string
           idempotency_key: string | null
           invoice_id: string
+          last_event_at: string | null
+          opened_at: string | null
           provider: string | null
           provider_message_id: string | null
           reply_to: string | null
@@ -1219,14 +1225,20 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bounce_type?: string | null
+          bounced_at?: string | null
           business_id: string
           cc_email?: string | null
           channel?: string
           created_at?: string
+          delivered_at?: string | null
           error?: string | null
+          failed_at?: string | null
           id?: string
           idempotency_key?: string | null
           invoice_id: string
+          last_event_at?: string | null
+          opened_at?: string | null
           provider?: string | null
           provider_message_id?: string | null
           reply_to?: string | null
@@ -1237,14 +1249,20 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bounce_type?: string | null
+          bounced_at?: string | null
           business_id?: string
           cc_email?: string | null
           channel?: string
           created_at?: string
+          delivered_at?: string | null
           error?: string | null
+          failed_at?: string | null
           id?: string
           idempotency_key?: string | null
           invoice_id?: string
+          last_event_at?: string | null
+          opened_at?: string | null
           provider?: string | null
           provider_message_id?: string | null
           reply_to?: string | null
@@ -1899,6 +1917,33 @@ export type Database = {
           },
         ]
       }
+      provider_webhook_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          id: number
+          payload: Json | null
+          processed_at: string
+          provider: string
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          id?: number
+          payload?: Json | null
+          processed_at?: string
+          provider: string
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          id?: number
+          payload?: Json | null
+          processed_at?: string
+          provider?: string
+        }
+        Relationships: []
+      }
       recommendation_events: {
         Row: {
           action: string
@@ -1952,6 +1997,45 @@ export type Database = {
           recorded_at?: string
           score?: number
           source?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          plan: string
+          price_id: string | null
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          plan?: string
+          price_id?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          plan?: string
+          price_id?: string | null
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -2210,6 +2294,38 @@ export type Database = {
           },
         ]
       }
+      usage_counters: {
+        Row: {
+          business_id: string
+          metric: string
+          period: string
+          updated_at: string
+          used: number
+        }
+        Insert: {
+          business_id: string
+          metric: string
+          period: string
+          updated_at?: string
+          used?: number
+        }
+        Update: {
+          business_id?: string
+          metric?: string
+          period?: string
+          updated_at?: string
+          used?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_counters_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       zylx_approvals: {
         Row: {
           business_id: string
@@ -2267,6 +2383,19 @@ export type Database = {
           uninvoiced_commission_minor: number
         }[]
       }
+      bdm_consume_usage: {
+        Args: {
+          p_amount?: number
+          p_business_id: string
+          p_limit: number
+          p_metric: string
+        }
+        Returns: {
+          allowed: boolean
+          remaining: number
+          used: number
+        }[]
+      }
       bdm_expense_types: {
         Args: never
         Returns: Database["public"]["Enums"]["transaction_kind"][]
@@ -2278,6 +2407,10 @@ export type Database = {
       bdm_refresh_overdue_invoices: {
         Args: { p_business_id?: string }
         Returns: number
+      }
+      bdm_release_usage: {
+        Args: { p_amount?: number; p_business_id: string; p_metric: string }
+        Returns: undefined
       }
       bdm_revenue_types: {
         Args: never
