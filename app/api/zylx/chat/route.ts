@@ -18,12 +18,71 @@ import { checkQuota, isEnabled, planFor } from '@/lib/services/entitlements';
 import { executeTool, toolsForContext, TOOL_DEFINITIONS } from '@/lib/zylx/tools';
 import { buildSystemPrompt } from '@/lib/zylx/prompt';
 import { recordAudit } from '@/lib/services/audit';
+import { buildBlocks, sanitizeBlocks } from '@/lib/zylx/envelope';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_MESSAGE_CHARS = 4000;
 const MAX_TOOL_ROUNDS = 5;
+const PROVIDER_TIMEOUT_MS = 45_000;
+const MAX_PROVIDER_ATTEMPTS = 2;
+
+/**
+ * Retry only the FIRST connection attempt, and only for transient
+ * failures. Reads are safe to repeat; writes never pass through here —
+ * they go to /api/zylx/approve, which is idempotent separately.
+ */
+async function withRetry<T>(fn: () => Promise<T>, requestId: string): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= MAX_PROVIDER_ATTEMPTS; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      const status = (error as { status?: number })?.status;
+      const transient = status === undefined || status === 429 || (status >= 500 && status < 600);
+      if (!transient || attempt === MAX_PROVIDER_ATTEMPTS) break;
+      logEvent('zylx.provider_retry', { requestId, attempt, status });
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * User-facing status per tool. Curated, never derived from arguments —
+ * a merchant name or amount must not leak into a status line.
+ */
+const TOOL_STATUS: Record<string, string> = {
+  get_business_summary: 'Checking your numbers',
+  get_revenue: 'Adding up money in',
+  get_expenses: 'Adding up money out',
+  get_profit: 'Working out profit',
+  get_profit_and_loss: 'Building your P&L',
+  get_cash_position: 'Checking your accounts',
+  compare_periods: 'Comparing periods',
+  get_outstanding_commissions: 'Checking unpaid commissions',
+  get_brand_performance: 'Splitting by brand',
+  get_project_profitability: 'Checking project profit',
+  get_tax_reserve_estimate: 'Estimating a tax set-aside',
+  find_uncategorized: 'Looking for uncategorised items',
+  find_missing_receipts: 'Looking for missing receipts',
+  search_transactions: 'Searching your transactions',
+  get_portfolio_summary: 'Comparing your businesses',
+  get_invoices: 'Checking invoices',
+  get_invoice: 'Opening that invoice',
+  get_outstanding_invoices: 'Checking unpaid invoices',
+  get_overdue_invoices: 'Checking overdue invoices',
+  get_receivables_position: "Checking what you're owed",
+  propose_transaction: 'Preparing that entry',
+  propose_invoice_draft: 'Preparing an invoice draft',
+  propose_categorize_transactions: 'Preparing those changes',
+};
+
+function statusFor(tool: string): string {
+  return TOOL_STATUS[tool] ?? 'Working';
+}
 
 export async function POST(req: NextRequest) {
   const requestId = crypto.randomUUID();
@@ -203,98 +262,191 @@ export async function POST(req: NextRequest) {
       { role: 'user', content: message },
     ];
 
-    // ── Tool loop ────────────────────────────────────────────
-    const toolCallsMade: Array<{ name: string; ok: boolean }> = [];
-    let proposal: unknown = null;
-    let answer = '';
+    // ══════════════════════════════════════════════════════════
+    // STREAMING TOOL LOOP
+    //
+    // Server-Sent Events. Four event kinds, all safe to show a user:
+    //   status  what Zylx is doing, from a curated label per tool
+    //   text    answer text as it arrives
+    //   blocks  typed render blocks, built SERVER-SIDE from tool results
+    //   done    conversation id and usage
+    //
+    // Never streamed: prompts, tool arguments, raw tool payloads, or
+    // anything resembling chain-of-thought.
+    // ══════════════════════════════════════════════════════════
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const completion = await openai.chat.completions.create({
-        model,
-        messages,
-        tools,
-        tool_choice: 'auto',
-        temperature: 0.3,
-        max_tokens: 1200,
-      });
+    const encoder = new TextEncoder();
 
-      const choice = completion.choices[0];
-      const assistantMessage = choice.message;
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const send = (event: string, data: unknown) => {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        };
 
-      if (!assistantMessage.tool_calls?.length) {
-        answer = assistantMessage.content ?? '';
-        break;
-      }
+        const toolResults: Array<Record<string, unknown>> = [];
+        const toolsUsed: string[] = [];
+        let answer = '';
 
-      messages.push(assistantMessage);
-
-      for (const call of assistantMessage.tool_calls) {
-        if (call.type !== 'function') continue;
-
-        let args: unknown = {};
         try {
-          args = JSON.parse(call.function.arguments || '{}');
-        } catch {
-          args = {};
+          for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+            const completion = await withRetry(
+              () =>
+                openai.chat.completions.create(
+                  {
+                    model,
+                    messages,
+                    tools,
+                    tool_choice: 'auto',
+                    temperature: 0.3,
+                    max_tokens: 1200,
+                    stream: true,
+                  },
+                  { timeout: PROVIDER_TIMEOUT_MS }
+                ),
+              requestId
+            );
+
+            let content = '';
+            const calls = new Map<
+              number,
+              { id: string; name: string; args: string }
+            >();
+
+            for await (const chunk of completion) {
+              const delta = chunk.choices[0]?.delta;
+              if (!delta) continue;
+
+              if (delta.content) {
+                content += delta.content;
+                send('text', { delta: delta.content });
+              }
+
+              for (const tc of delta.tool_calls ?? []) {
+                const slot = calls.get(tc.index) ?? { id: '', name: '', args: '' };
+                if (tc.id) slot.id = tc.id;
+                if (tc.function?.name) slot.name += tc.function.name;
+                if (tc.function?.arguments) slot.args += tc.function.arguments;
+                calls.set(tc.index, slot);
+              }
+            }
+
+            // No tools requested — this round is the final answer.
+            if (calls.size === 0) {
+              answer = content;
+              break;
+            }
+
+            messages.push({
+              role: 'assistant',
+              content: content || null,
+              tool_calls: [...calls.values()].map((c) => ({
+                id: c.id,
+                type: 'function' as const,
+                function: { name: c.name, arguments: c.args },
+              })),
+            });
+
+            for (const call of calls.values()) {
+              // Curated label only. The tool NAME is safe; its arguments
+              // are not, so they never reach the client.
+              send('status', { label: statusFor(call.name), tool: call.name });
+
+              let args: unknown = {};
+              try {
+                args = JSON.parse(call.args || '{}');
+              } catch {
+                args = {};
+              }
+
+              const result = await executeTool(ctx, call.name, args);
+              toolsUsed.push(call.name);
+              toolResults.push(result as unknown as Record<string, unknown>);
+
+              messages.push({
+                role: 'tool',
+                tool_call_id: call.id,
+                content: JSON.stringify(result).slice(0, 12_000),
+              });
+            }
+          }
+
+          if (!answer) {
+            answer =
+              'I looked that up but could not put together an answer. Try a narrower question, or open the relevant page directly.';
+            send('text', { delta: answer });
+          }
+
+          // Blocks are built from tool results on the server. The model
+          // never emits a block, so it cannot name a component or invent
+          // a figure inside one.
+          const blocks = sanitizeBlocks(buildBlocks(toolResults as never));
+          if (blocks.length > 0) send('blocks', { blocks });
+
+          const { error: assistantInsertError } = await ctx.db.from('ai_messages').insert({
+            conversation_id: conversationId!,
+            user_id: ctx.userId,
+            role: 'assistant',
+            content: answer,
+          });
+          if (assistantInsertError) {
+            logError('zylx.persist_assistant_message_failed', assistantInsertError, { requestId });
+          }
+
+          const proposalBlock = blocks.find((b) => b.type === 'proposal');
+          if (proposalBlock) {
+            await recordAudit(ctx.db, {
+              businessId: ctx.businessId,
+              actorUserId: ctx.userId,
+              actorType: 'zylx',
+              entity: 'proposal',
+              action: 'propose',
+              after: proposalBlock,
+              source: 'zylx',
+              requestId,
+            });
+          }
+
+          logEvent('zylx.answer', {
+            requestId,
+            businessId: ctx.businessId,
+            userId: ctx.userId,
+            model,
+            tools: toolsUsed.join(','),
+            blockCount: blocks.length,
+          });
+
+          send('done', {
+            conversationId,
+            toolsUsed,
+            usage: { used: (usedCount ?? 0) + 1, limit: quota.limit },
+          });
+        } catch (streamError) {
+          // A read failed. Nothing was written, so no state is corrupt —
+          // the user just needs to know and retry.
+          logError('zylx.stream_failed', streamError, { requestId, businessId: ctx.businessId });
+          send('error', {
+            error:
+              streamError instanceof ServiceError
+                ? streamError.message
+                : 'Zylx lost its connection partway through. Nothing was changed — try again.',
+          });
+        } finally {
+          controller.close();
         }
-
-        const result = await executeTool(ctx, call.function.name, args);
-        toolCallsMade.push({ name: call.function.name, ok: result.ok });
-
-        if (result.proposal) proposal = result.proposal;
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          content: JSON.stringify(result).slice(0, 12_000),
-        });
-      }
-    }
-
-    if (!answer) {
-      answer =
-        'I looked that up but could not put together an answer. Try asking a narrower question, or open the relevant page directly.';
-    }
-
-    const { error: assistantInsertError } = await ctx.db.from('ai_messages').insert({
-      conversation_id: conversationId!,
-      user_id: ctx.userId,
-      role: 'assistant',
-      content: answer,
-    });
-    if (assistantInsertError) {
-      logError('zylx.persist_assistant_message_failed', assistantInsertError, { requestId });
-    }
-
-    if (proposal) {
-      await recordAudit(ctx.db, {
-        businessId: ctx.businessId,
-        actorUserId: ctx.userId,
-        actorType: 'zylx',
-        entity: 'proposal',
-        action: 'propose',
-        after: proposal,
-        source: 'zylx',
-        requestId,
-      });
-    }
-
-    logEvent('zylx.answer', {
-      requestId,
-      businessId: ctx.businessId,
-      userId: ctx.userId,
-      model,
-      tools: toolCallsMade.map((t) => t.name).join(','),
-      hasProposal: Boolean(proposal),
+      },
     });
 
-    return NextResponse.json({
-      message: answer,
-      conversationId,
-      toolCalls: toolCallsMade,
-      proposal,
-      usage: { used: (usedCount ?? 0) + 1, limit: quota.limit },
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      },
     });
+
   } catch (error) {
     const serviceError = toServiceError(error, 'answer that question');
     logError('zylx.chat_failed', serviceError, { requestId, route: '/api/zylx/chat' });
