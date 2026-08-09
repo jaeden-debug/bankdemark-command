@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireBusiness } from '@/lib/services/context';
 import BookingForm from '@/components/bdm/BookingForm';
+import TravelBookingForm from '@/components/bdm/TravelBookingForm';
 import { nounFor } from '@/lib/domain/nouns';
 
 export const dynamic = 'force-dynamic';
@@ -22,12 +23,11 @@ export default async function NewBookingPage({ params }: { params: { businessId:
         <h1 className="bdm-h1 mt-2">Add a {noun.singular.toLowerCase()}</h1>
       </header>
 
-      <BookingForm
-        businessId={ctx.businessId}
-        currency={ctx.business.base_currency}
-        brands={brands ?? []}
-        noun={noun}
-      />
+      {ctx.business.business_type === 'travel' ? (
+        <TravelBookingForm businessId={ctx.businessId} currency={ctx.business.base_currency} />
+      ) : (
+        <BookingForm businessId={ctx.businessId} currency={ctx.business.base_currency} brands={brands ?? []} noun={noun} />
+      )}
     </div>
   );
 }

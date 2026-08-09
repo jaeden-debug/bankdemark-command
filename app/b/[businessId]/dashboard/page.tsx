@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { requireBusiness } from '@/lib/services/context';
 import { getBusinessSnapshot, resolvePeriod, type PeriodPreset } from '@/lib/services/finance';
 import { formatMinor, percentChange, formatPercent } from '@/lib/domain/money';
+import { getTravelCommissionPipeline } from '@/lib/services/commission-reports';
+import TravelDashboard from '@/components/bdm/TravelDashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +22,13 @@ export default async function DashboardPage({
   searchParams: { period?: string };
 }) {
   const ctx = await requireBusiness(params.businessId, 'viewer');
+  if (ctx.business.business_type === 'travel') {
+    const [pipeline, counterparties] = await Promise.all([
+      getTravelCommissionPipeline(ctx),
+      ctx.db.from('counterparties').select('id, name').eq('business_id', ctx.businessId).eq('kind', 'supplier'),
+    ]);
+    return <TravelDashboard business={{ id: ctx.businessId, name: ctx.business.name, currency: ctx.business.base_currency }} pipeline={pipeline} suppliers={Object.fromEntries((counterparties.data ?? []).map((c) => [c.id, c.name]))} />;
+  }
   const preset = (PERIODS.find((p) => p.id === searchParams.period)?.id ?? 'this_month') as PeriodPreset;
   const period = resolvePeriod(preset);
   const { value: snap, provenance } = await getBusinessSnapshot(ctx, period);

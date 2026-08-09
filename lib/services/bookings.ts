@@ -20,6 +20,7 @@ import { recordAudit } from './audit';
 import { parseMajorToMinor, applyRate } from '@/lib/domain/money';
 import { recognizedRevenueForBooking, type RecognitionMode } from '@/lib/domain/semantics';
 import { createTransaction } from './transactions';
+import { normalizeBookingReference } from '@/lib/domain/commission-reconciliation';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -27,7 +28,7 @@ export interface CreateBookingInput {
   /** Free text. Matched to an existing client or created. */
   clientName?: string | null;
   supplierName?: string | null;
-  description: string;
+  description?: string | null;
   reference?: string | null;
   /** Headline value of what was sold. */
   grossValueMajor: string | number;
@@ -38,6 +39,10 @@ export interface CreateBookingInput {
   serviceFeeMajor?: string | number | null;
   bookingDate?: string;
   serviceDate?: string | null;
+  returnDate?: string | null;
+  hostAgencyName?: string | null;
+  currency?: string | null;
+  source?: 'manual' | 'zylx' | 'csv';
   brandId?: string | null;
   recognitionMode?: RecognitionMode;
   notes?: string | null;
@@ -56,6 +61,9 @@ export interface BookingRow {
   commission_status: string;
   booking_date: string;
   service_date: string | null;
+  return_date: string | null;
+  supplier_id: string | null;
+  host_agency_id: string | null;
   currency: string;
   status: string;
 }
@@ -102,10 +110,22 @@ export async function createBooking(
   ctx: BusinessContext,
   input: CreateBookingInput
 ): Promise<BookingRow> {
-  const currency = ctx.business.base_currency;
+  const currency = input.currency?.toUpperCase() || ctx.business.base_currency;
+  if (!/^[A-Z]{3}$/.test(currency)) throw new ServiceError('validation', 'Currency must be a three-letter code.');
 
-  const description = input.description?.trim();
-  if (!description) throw new ServiceError('validation', 'Say what was sold.');
+  const reference = input.reference?.trim();
+  const description = input.description?.trim() || (reference ? `Booking ${reference}` : 'Travel booking');
+  if (!reference && ctx.business.business_type === 'travel') {
+    throw new ServiceError('validation', 'Enter a booking number.');
+  }
+  if (reference) {
+    const { data: existingReferences, error: referenceError } = await ctx.db.from('bookings')
+      .select('reference').eq('business_id', ctx.businessId).not('reference', 'is', null);
+    if (referenceError) throw new ServiceError('internal', 'Could not check that booking number.', { detail: referenceError.message });
+    if ((existingReferences ?? []).some((row) => row.reference && normalizeBookingReference(row.reference) === normalizeBookingReference(reference))) {
+      throw new ServiceError('conflict', `Booking ${reference} already exists.`);
+    }
+  }
 
   const grossValueMinor = parseMajorToMinor(input.grossValueMajor ?? 0, currency);
   if (grossValueMinor < 0) throw new ServiceError('validation', 'The total value cannot be negative.');
@@ -142,9 +162,17 @@ export async function createBooking(
   const bookingDate = input.bookingDate ?? new Date().toISOString().slice(0, 10);
   if (!ISO_DATE.test(bookingDate)) throw new ServiceError('validation', 'Enter a valid date.');
 
-  const [clientId, supplierId] = await Promise.all([
+  for (const date of [input.serviceDate, input.returnDate]) {
+    if (date && !ISO_DATE.test(date)) throw new ServiceError('validation', 'Enter a valid travel date.');
+  }
+  if (input.serviceDate && input.returnDate && input.returnDate < input.serviceDate) {
+    throw new ServiceError('validation', 'Return date cannot be before departure date.');
+  }
+
+  const [clientId, supplierId, hostAgencyId] = await Promise.all([
     resolveCounterparty(ctx, input.clientName, 'customer'),
     resolveCounterparty(ctx, input.supplierName, 'supplier'),
+    resolveCounterparty(ctx, input.hostAgencyName, 'supplier'),
   ]);
 
   const row = unwrap(
@@ -152,21 +180,24 @@ export async function createBooking(
       .from('bookings')
       .insert({
         business_id: ctx.businessId,
-        reference: input.reference?.trim() || null,
+        reference: reference || null,
         description: description.slice(0, 500),
         client_id: clientId,
         supplier_id: supplierId,
+        host_agency_id: hostAgencyId,
         brand_id: input.brandId || null,
         gross_value_minor: grossValueMinor,
         currency,
         booking_date: bookingDate,
         service_date: input.serviceDate || null,
+        return_date: input.returnDate || null,
         recognition_mode: input.recognitionMode ?? 'commission',
         commission_rate: input.commissionRatePercent != null ? input.commissionRatePercent / 100 : null,
         commission_expected_minor: commissionExpectedMinor,
         service_fee_minor: serviceFeeMinor,
-        // Derived, not asked: nothing received yet means it is owed.
-        commission_status: commissionExpectedMinor > 0 ? 'receivable' : 'earned',
+        // A booking is expected commission, not earned or received income.
+        commission_status: 'expected',
+        source: input.source ?? 'manual',
         notes: input.notes?.slice(0, 2000) ?? null,
         created_by: ctx.userId,
       })
@@ -182,7 +213,8 @@ export async function createBooking(
     entityId: row.id,
     action: 'create',
     after: row,
-    source: 'manual',
+    actorType: input.source === 'zylx' ? 'zylx' : input.source === 'csv' ? 'import' : 'user',
+    source: input.source ?? 'manual',
   });
 
   return row;
@@ -311,7 +343,7 @@ export async function listBookings(
   const { data, error } = await ctx.db
     .from('bookings')
     .select(
-      'id, reference, description, client_id, brand_id, gross_value_minor, commission_expected_minor, commission_received_minor, service_fee_minor, commission_status, booking_date, service_date, currency, status'
+      'id, reference, description, client_id, supplier_id, host_agency_id, brand_id, gross_value_minor, commission_expected_minor, commission_received_minor, service_fee_minor, commission_status, booking_date, service_date, return_date, currency, status'
     )
     .eq('business_id', ctx.businessId)
     .order('booking_date', { ascending: false })

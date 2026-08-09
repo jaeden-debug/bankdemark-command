@@ -34,7 +34,7 @@ import {
   type Period,
   type PeriodPreset,
 } from '@/lib/services/finance';
-import { formatMinor } from '@/lib/domain/money';
+import { formatMinor, parseMajorToMinor } from '@/lib/domain/money';
 import { computeBrandPerformance } from '@/lib/domain/ledger';
 import { TRANSACTION_KINDS, type TransactionKind } from '@/lib/domain/semantics';
 import { isEnabled } from '@/lib/services/entitlements';
@@ -52,6 +52,7 @@ import {
   listTaxRates,
 } from '@/lib/services/invoices';
 import { daysOverdue, computeInvoiceTotals } from '@/lib/domain/invoice';
+import { getCommissionAnomalies, getCommissionReport, getTravelCommissionPipeline } from '@/lib/services/commission-reports';
 
 /**
  * Server-authoritative risk tier. The model does NOT declare this and
@@ -155,6 +156,45 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       'Bookings where commission has been earned but not yet received, with the total outstanding. Use for "who owes me?" and "what commission am I waiting for?".',
     risk: 'read',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_bookings', risk: 'read',
+    description: 'Search deterministic booking records by reference, payment state, supplier, departure dates, or expected commission amount.',
+    parameters: { type: 'object', properties: {
+      reference: { type: 'string' }, status: { type: 'string', enum: ['pending','paid','needs_attention','all'] },
+      supplier: { type: 'string' }, dateFrom: { type: 'string' }, dateTo: { type: 'string' },
+      minCommission: { type: 'number' }, maxCommission: { type: 'number' }, limit: { type: 'number' },
+    }, additionalProperties: false },
+  },
+  {
+    name: 'get_commission_pipeline', risk: 'read',
+    description: 'Pending, evidence-backed paid, upcoming, completed-but-unpaid, average commission, and departure-month pipeline figures.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'get_commission_report', risk: 'read',
+    description: 'Extracted rows and deterministic reconciliation state for one commission report, or the latest report.',
+    parameters: { type: 'object', properties: { document_id: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'get_commission_anomalies', risk: 'read',
+    description: 'Unresolved commission report anomalies that need human attention.',
+    parameters: { type: 'object', properties: { limit: { type: 'number' } }, additionalProperties: false },
+  },
+  {
+    name: 'get_commission_chart_data', risk: 'read',
+    description: 'Deterministic paid-versus-pending commission values grouped by departure month for charting.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'propose_booking', risk: 'propose', capability: 'ai_writes',
+    description: 'Propose one or more travel bookings. Nothing is written until the user approves the structured proposal.',
+    parameters: { type: 'object', properties: { bookings: { type: 'array', maxItems: 50, items: {
+      type: 'object', properties: {
+        reference: { type: 'string' }, commission_major: { type: 'number' }, departure_date: { type: 'string' },
+        return_date: { type: 'string' }, client_name: { type: 'string' }, supplier_name: { type: 'string' }, host_agency_name: { type: 'string' }, notes: { type: 'string' },
+      }, required: ['reference','commission_major'], additionalProperties: false,
+    } } }, required: ['bookings'], additionalProperties: false },
   },
   {
     name: 'get_brand_performance',
@@ -408,7 +448,7 @@ export interface ToolResult {
   /** Pre-formatted headline figures. The model must quote these verbatim. */
   formatted?: Record<string, string>;
   provenance?: unknown;
-  proposal?: TransactionProposal | InvoiceDraftProposal;
+  proposal?: TransactionProposal | InvoiceDraftProposal | BookingProposal;
   error?: string;
 }
 
@@ -454,6 +494,13 @@ export interface TransactionProposal {
   categoryId?: string;
   categorySlug?: string;
   /** Human-readable summary shown on the approval card. */
+  summary: string;
+  warnings: string[];
+}
+
+export interface BookingProposal {
+  kind: 'booking';
+  bookings: Array<{ reference: string; commissionMajor: number; departureDate?: string; returnDate?: string; clientName?: string; supplierName?: string; hostAgencyName?: string; notes?: string }>;
   summary: string;
   warnings: string[];
 }
@@ -615,6 +662,88 @@ export async function executeTool(
           },
           provenance,
         };
+      }
+
+      case 'get_bookings': {
+        const [{ data: rawRows, error }, { data: suppliers }, anomalies, { data: evidencePayments }] = await Promise.all([
+          ctx.db.from('bookings').select('id, reference, service_date, return_date, supplier_id, commission_expected_minor, commission_received_minor, currency')
+            .eq('business_id', ctx.businessId).neq('status', 'cancelled').order('booking_date', { ascending: false }),
+          ctx.db.from('counterparties').select('id, name').eq('business_id', ctx.businessId).eq('kind', 'supplier'),
+          getCommissionAnomalies(ctx, 200),
+          ctx.db.from('commission_payments').select('booking_id, amount_minor').eq('business_id', ctx.businessId).not('report_line_id', 'is', null),
+        ]);
+        if (error) return { ok: false, tool: name, error: 'Could not load bookings.' };
+        const evidenceByBooking = new Map<string, number>();
+        for (const payment of evidencePayments ?? []) evidenceByBooking.set(payment.booking_id, (evidenceByBooking.get(payment.booking_id) ?? 0) + payment.amount_minor);
+        const rows = (rawRows ?? []).map((row) => ({ ...row, commission_received_minor: evidenceByBooking.get(row.id) ?? 0 }));
+        const supplierById = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
+        const attention = new Set(anomalies.flatMap((a) => a.matched_booking_id ? [a.matched_booking_id] : []));
+        const statusOf = (b: (typeof rows)[number]) => attention.has(b.id) ? 'needs_attention' : b.commission_expected_minor > 0 && b.commission_received_minor >= b.commission_expected_minor ? 'paid' : 'pending';
+        const min = args.minCommission == null ? null : parseMajorToMinor(Number(args.minCommission), currency);
+        const max = args.maxCommission == null ? null : parseMajorToMinor(Number(args.maxCommission), currency);
+        const filtered = rows.filter((b) => {
+          const supplier = b.supplier_id ? supplierById.get(b.supplier_id) ?? '' : '';
+          return (!args.reference || b.reference?.toLowerCase().includes(String(args.reference).toLowerCase())) &&
+            (!args.status || args.status === 'all' || statusOf(b) === args.status) &&
+            (!args.supplier || supplier.toLowerCase().includes(String(args.supplier).toLowerCase())) &&
+            (!args.dateFrom || (b.service_date && b.service_date >= String(args.dateFrom))) &&
+            (!args.dateTo || (b.service_date && b.service_date <= String(args.dateTo))) &&
+            (min === null || (b.currency === currency && b.commission_expected_minor >= min)) &&
+            (max === null || (b.currency === currency && b.commission_expected_minor <= max));
+        });
+        const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
+        return { ok: true, tool: name, data: {
+          count: filtered.length,
+          bookings: filtered.slice(0, limit).map((b) => ({ reference: b.reference, departureDate: b.service_date, returnDate: b.return_date, supplier: b.supplier_id ? supplierById.get(b.supplier_id) ?? null : null, expectedCommission: formatMinor(b.commission_expected_minor, b.currency, { showMinor: true }), receivedCommission: formatMinor(b.commission_received_minor, b.currency, { showMinor: true }), status: statusOf(b) })),
+          truncated: filtered.length > limit,
+        }, formatted: { bookingCount: String(filtered.length) } };
+      }
+
+      case 'get_commission_pipeline': {
+        const p = await getTravelCommissionPipeline(ctx);
+        return { ok: true, tool: name, data: { upcomingByMonth: p.byDepartureMonth, completedButUnpaid: p.completedPending, upcomingPending: p.upcomingPending }, formatted: {
+          pending: fmt(p.pendingMinor), paid: fmt(p.paidMinor), completedCount: String(p.completedPending.length), average: fmt(p.averageExpectedMinor),
+        } };
+      }
+
+      case 'get_commission_report': {
+        let documentId = typeof args.document_id === 'string' ? args.document_id : null;
+        if (!documentId) {
+          const { data } = await ctx.db.from('documents').select('id').eq('business_id', ctx.businessId).eq('doc_type', 'commission_report').order('created_at', { ascending: false }).limit(1).maybeSingle();
+          documentId = data?.id ?? null;
+        }
+        if (!documentId) return { ok: false, tool: name, error: 'No commission report has been uploaded.' };
+        const report = await getCommissionReport(ctx, documentId);
+        const reportCurrency = report.document.currency || currency;
+        return { ok: true, tool: name, data: { document: report.document, rows: report.lines.map((l) => ({ reference: l.raw_booking_reference, reportedAmount: l.reported_amount_minor == null ? null : formatMinor(l.reported_amount_minor, reportCurrency, { showMinor: true }), status: l.match_status, anomaly: l.anomaly_code, detail: l.anomaly_detail })), notOnReport: report.notOnReport.map((b) => b.reference) } };
+      }
+
+      case 'get_commission_anomalies': {
+        const rows = await getCommissionAnomalies(ctx, Number(args.limit) || 100);
+        return { ok: true, tool: name, data: { count: rows.length, anomalies: rows.map((r) => ({ reference: r.raw_booking_reference, code: r.anomaly_code, detail: r.anomaly_detail, reportedAmount: r.reported_amount_minor == null ? null : formatMinor(r.reported_amount_minor, r.currency || currency, { showMinor: true }), documentId: r.document_id })) }, formatted: { anomalyCount: String(rows.length) } };
+      }
+
+      case 'get_commission_chart_data': {
+        const p = await getTravelCommissionPipeline(ctx);
+        return { ok: true, tool: name, data: { title: 'Paid vs pending commission by departure month', currency, dateRange: p.byDepartureMonth.length ? { from: p.byDepartureMonth[0].month, to: p.byDepartureMonth[p.byDepartureMonth.length - 1].month } : null, series: [
+          { label: 'Paid', points: p.byDepartureMonth.map((m) => ({ x: m.month, y: m.paidMinor })) },
+          { label: 'Pending', points: p.byDepartureMonth.map((m) => ({ x: m.month, y: m.pendingMinor })) },
+        ] } };
+      }
+
+      case 'propose_booking': {
+        if (ctx.business.business_type !== 'travel') return { ok: false, tool: name, error: 'Booking proposals are available for travel businesses.' };
+        const raw = Array.isArray(args.bookings) ? args.bookings as Array<Record<string, unknown>> : [];
+        if (!raw.length || raw.length > 50) return { ok: false, tool: name, error: 'Propose between 1 and 50 bookings.' };
+        const seen = new Set<string>();
+        const bookings = raw.map((b) => {
+          const reference = String(b.reference ?? '').trim(); const commissionMajor = Number(b.commission_major);
+          if (!reference || !Number.isFinite(commissionMajor) || commissionMajor <= 0) throw new ServiceError('validation', 'Every booking needs a reference and positive commission.');
+          const normalized = reference.toUpperCase(); if (seen.has(normalized)) throw new ServiceError('validation', `Booking ${reference} appears twice.`); seen.add(normalized);
+          for (const key of ['departure_date','return_date']) if (b[key] && !/^\d{4}-\d{2}-\d{2}$/.test(String(b[key]))) throw new ServiceError('validation', 'Travel dates must be YYYY-MM-DD.');
+          return { reference, commissionMajor, departureDate: b.departure_date ? String(b.departure_date) : undefined, returnDate: b.return_date ? String(b.return_date) : undefined, clientName: b.client_name ? String(b.client_name) : undefined, supplierName: b.supplier_name ? String(b.supplier_name) : undefined, hostAgencyName: b.host_agency_name ? String(b.host_agency_name) : undefined, notes: b.notes ? String(b.notes) : undefined };
+        });
+        return { ok: true, tool: name, proposal: { kind: 'booking', bookings, summary: `Add ${bookings.length} pending booking${bookings.length === 1 ? ` ${bookings[0].reference}` : 's'}`, warnings: ['Expected commission is not received income.'] } };
       }
 
       case 'get_brand_performance': {

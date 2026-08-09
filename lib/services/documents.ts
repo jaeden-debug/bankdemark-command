@@ -30,7 +30,7 @@ export const BUCKET = 'documents';
 /** Signed URLs live just long enough to render one view. */
 const SIGNED_URL_TTL_SECONDS = 300;
 
-export type DocType = 'receipt' | 'invoice' | 'statement' | 'contract' | 'other';
+export type DocType = 'receipt' | 'invoice' | 'statement' | 'contract' | 'commission_report' | 'other';
 
 export interface DocumentRow {
   id: string;

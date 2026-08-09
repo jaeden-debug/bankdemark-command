@@ -1,6 +1,7 @@
 'use client';
 
 import type { ZylxBlock } from '@/lib/zylx/envelope';
+import { formatMinor } from '@/lib/domain/money';
 
 /**
  * Renders the typed blocks Zylx returns.
@@ -147,9 +148,8 @@ export default function ZylxBlocks({
               </p>
             );
 
-          // Reserved types. Schemas exist; renderers do not ship yet, so
-          // they render nothing rather than a broken card.
           case 'chart':
+            return <CommissionChart key={i} block={block} />;
           case 'document':
           default:
             return null;
@@ -157,4 +157,11 @@ export default function ZylxBlocks({
       })}
     </div>
   );
+}
+
+function CommissionChart({ block }: { block: Extract<ZylxBlock, { type: 'chart' }> }) {
+  const labels = [...new Set(block.series.flatMap((series) => series.points.map((point) => point.x)))];
+  const max = Math.max(1, ...block.series.flatMap((series) => series.points.map((point) => point.y)));
+  const colours = ['bg-positive', 'bg-gold', 'bg-ink'];
+  return <section className="rounded-panel border border-gold-line bg-white/65 p-4"><p className="text-sm font-bold text-ink">{block.title}</p><div className="mt-4 flex h-40 items-end gap-3 overflow-x-auto">{labels.map((label) => <div key={label} className="flex h-full min-w-12 flex-1 flex-col items-center justify-end"><div className="flex h-full items-end gap-1">{block.series.map((series, index) => { const value = series.points.find((point) => point.x === label)?.y ?? 0; return <div key={series.label} className={`w-4 rounded-t ${colours[index % colours.length]}`} style={{ height: `${Math.max(2, value / max * 100)}%` }} title={`${series.label}: ${block.yFormat === 'currency' && block.currency ? formatMinor(value, block.currency, { showMinor: true }) : value}`} />; })}</div><span className="mt-2 text-[11px] text-muted">{label.slice(5)}</span></div>)}</div><div className="mt-3 flex flex-wrap gap-4 text-xs text-muted">{block.series.map((series, index) => <span key={series.label}><span className={`mr-1 inline-block h-2.5 w-2.5 rounded-sm ${colours[index % colours.length]}`} />{series.label}</span>)}</div></section>;
 }

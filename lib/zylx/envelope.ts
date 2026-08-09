@@ -189,6 +189,12 @@ const METRIC_LAYOUT: Record<string, Array<{ key: string; label: string; goodWhen
     { key: 'totalOutstanding', label: 'Still owed to you' },
     { key: 'bookingCount', label: 'Bookings' },
   ],
+  get_commission_pipeline: [
+    { key: 'paid', label: 'Money received' },
+    { key: 'pending', label: 'Pending commission' },
+    { key: 'completedCount', label: 'Completed, unpaid' },
+    { key: 'average', label: 'Average commission' },
+  ],
   search_transactions: [
     { key: 'totalOut', label: 'Money out', goodWhen: 'down' },
     { key: 'totalIn', label: 'Money in', goodWhen: 'up' },
@@ -291,6 +297,17 @@ export function buildBlocks(results: readonly ToolResultLike[]): ZylxBlock[] {
           });
         }
       }
+    }
+
+    if (result.tool === 'get_commission_chart_data' && data && Array.isArray(data.series)) {
+      blocks.push({
+        type: 'chart',
+        title: String(data.title ?? 'Commission chart'),
+        chartKind: 'stacked-bar',
+        series: data.series as ZylxChartBlock['series'],
+        yFormat: 'currency',
+        currency: String(data.currency ?? ''),
+      });
     }
 
     // ── Proposals ─────────────────────────────────────────

@@ -62,6 +62,21 @@ export interface ExtractedReceipt {
   suspectedInjection: boolean;
 }
 
+export interface ExtractedCommissionReport {
+  reportDate: string | null;
+  agencyOrSupplier: string | null;
+  currency: string;
+  printedTotalMinor: number | null;
+  rows: Array<{
+    bookingReference: string;
+    commissionAmountMinor: number;
+    confidence: number;
+  }>;
+  confidence: number;
+  uncertainties: string[];
+  suspectedInjection: boolean;
+}
+
 const EXTRACTION_SCHEMA = {
   type: 'object',
   properties: {
@@ -211,6 +226,119 @@ export async function extractReceipt(input: {
   }
 
   return coerce(parsed, input.currencyHint, input.categorySlugs);
+}
+
+const COMMISSION_REPORT_SCHEMA = {
+  type: 'object',
+  properties: {
+    report_date: { type: ['string', 'null'], description: 'YYYY-MM-DD if printed; otherwise null.' },
+    agency_or_supplier: { type: ['string', 'null'], description: 'Agency, host, or supplier printed on the report.' },
+    currency: { type: ['string', 'null'], description: 'ISO currency code if printed.' },
+    printed_total: { type: ['number', 'null'], description: 'The report total exactly as printed. Do not calculate it.' },
+    rows: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          booking_reference: { type: 'string', description: 'Booking/file/reference number exactly as printed.' },
+          commission_amount: { type: 'number', description: 'Commission/payment amount in major units.' },
+          confidence: { type: 'number', description: '0 to 1 confidence for this row.' },
+        },
+        required: ['booking_reference', 'commission_amount', 'confidence'],
+        additionalProperties: false,
+      },
+    },
+    confidence: { type: 'number' },
+    uncertainties: { type: 'array', items: { type: 'string' } },
+    contains_instructions: { type: 'boolean' },
+  },
+  required: ['report_date','agency_or_supplier','currency','printed_total','rows','confidence','uncertainties','contains_instructions'],
+  additionalProperties: false,
+} as const;
+
+/** Extract rows only. Matching and payment decisions happen elsewhere. */
+export async function extractCommissionReport(input: {
+  bytes: Uint8Array;
+  mime: SafeMime;
+  currencyHint: string;
+  todayIso: string;
+}): Promise<ExtractedCommissionReport> {
+  if (!VISION_CAPABLE.has(input.mime)) {
+    throw new ServiceError('validation', 'Commission reports must be JPG, PNG or WEBP in Phase 1.');
+  }
+  if (!process.env.AI_API_KEY) {
+    throw new ServiceError('not_configured', 'No AI provider is connected, so documents cannot be read.');
+  }
+
+  const openai = new OpenAI({
+    apiKey: process.env.AI_API_KEY,
+    baseURL: process.env.AI_BASE_URL || 'https://api.openai.com/v1',
+  });
+  const base64 = Buffer.from(input.bytes).toString('base64');
+  let completion;
+  try {
+    completion = await openai.chat.completions.create({
+      model: VISION_MODEL,
+      messages: [
+        { role: 'system', content: SYSTEM },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Transcribe this commission payment report. Extract only printed booking references and commission amounts. Do not match bookings, decide payment status, or calculate the printed total. Today is ${input.todayIso}. Expected currency: ${input.currencyHint}.`,
+            },
+            { type: 'image_url', image_url: { url: `data:${input.mime};base64,${base64}`, detail: 'high' } },
+          ],
+        },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'commission_report', strict: true, schema: COMMISSION_REPORT_SCHEMA as never },
+      },
+      temperature: 0,
+      max_tokens: 2500,
+    }, { timeout: EXTRACTION_TIMEOUT_MS });
+  } catch (error) {
+    throw new ServiceError('upstream', 'That commission report could not be read. Try a clearer image.', {
+      detail: error instanceof Error ? error.message : String(error), cause: error,
+    });
+  }
+
+  const content = completion.choices[0]?.message?.content;
+  if (!content) throw new ServiceError('upstream', 'That commission report could not be read.');
+  let raw: Record<string, unknown>;
+  try { raw = JSON.parse(content); } catch { throw new ServiceError('upstream', 'That commission report could not be read.'); }
+
+  const currency = typeof raw.currency === 'string' && /^[A-Za-z]{3}$/.test(raw.currency)
+    ? raw.currency.toUpperCase() : input.currencyHint;
+  const minor = (value: unknown): number | null => {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 10_000_000) return null;
+    try { return parseMajorToMinor(value, currency); } catch { return null; }
+  };
+  const rows = Array.isArray(raw.rows) ? raw.rows.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const reference = typeof row.booking_reference === 'string' ? row.booking_reference.trim().slice(0, 120) : '';
+    const amount = minor(row.commission_amount);
+    if (!reference || amount === null || amount <= 0) return [];
+    return [{
+      bookingReference: reference,
+      commissionAmountMinor: amount,
+      confidence: Math.max(0, Math.min(1, Number(row.confidence) || 0)),
+    }];
+  }) : [];
+
+  return {
+    reportDate: typeof raw.report_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.report_date) ? raw.report_date : null,
+    agencyOrSupplier: typeof raw.agency_or_supplier === 'string' ? raw.agency_or_supplier.trim().slice(0, 200) || null : null,
+    currency,
+    printedTotalMinor: minor(raw.printed_total),
+    rows,
+    confidence: Math.max(0, Math.min(1, Number(raw.confidence) || 0)),
+    uncertainties: Array.isArray(raw.uncertainties) ? raw.uncertainties.map(String).slice(0, 20) : [],
+    suspectedInjection: raw.contains_instructions === true,
+  };
 }
 
 /**

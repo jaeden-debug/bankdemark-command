@@ -119,14 +119,15 @@ export default function BookingList({
                     >
                       Invoice this
                     </a>
-                    <button
-                      type="button"
-                      onClick={() => markReceived(b)}
-                      disabled={pending === b.id}
-                      className="bdm-btn-secondary bdm-btn-sm"
-                    >
-                      {pending === b.id ? 'Recording…' : 'Mark received'}
-                    </button>
+                    {noun.singular === 'Booking' ? (
+                      <a href={`/b/${businessId}/commission-reports/new`} className="bdm-btn-secondary bdm-btn-sm">
+                        Reconcile commission
+                      </a>
+                    ) : (
+                      <button type="button" onClick={() => markReceived(b)} disabled={pending === b.id} className="bdm-btn-secondary bdm-btn-sm">
+                        {pending === b.id ? 'Recording…' : 'Mark received'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

@@ -15,7 +15,8 @@ import { requireBusiness } from '@/lib/services/context';
 import { ServiceError, logError, logEvent, toServiceError } from '@/lib/services/errors';
 import { isEnabled, checkQuota, planFor } from '@/lib/services/entitlements';
 import { uploadDocument, listDocuments, deleteDocument, type DocType } from '@/lib/services/documents';
-import { extractReceipt, checkArithmetic } from '@/lib/zylx/extraction';
+import { extractReceipt, extractCommissionReport, checkArithmetic } from '@/lib/zylx/extraction';
+import { persistCommissionReportExtraction } from '@/lib/services/commission-reports';
 import { findMatches } from '@/lib/domain/matching';
 import { loadTransactions, resolvePeriod } from '@/lib/services/finance';
 import { VISION_CAPABLE, MAX_FILE_BYTES, type SafeMime } from '@/lib/domain/file-safety';
@@ -24,7 +25,7 @@ import { formatMinor } from '@/lib/domain/money';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const DOC_TYPES: DocType[] = ['receipt', 'invoice', 'statement', 'contract', 'other'];
+const DOC_TYPES: DocType[] = ['receipt', 'invoice', 'statement', 'contract', 'commission_report', 'other'];
 
 export async function GET(req: NextRequest) {
   try {
@@ -133,6 +134,34 @@ export async function POST(req: NextRequest) {
             ? 'Saved. Reading PDFs is not available yet, so enter the details yourself.'
             : 'Saved. This format cannot be read automatically yet.',
       });
+    }
+
+    if (docType === 'commission_report') {
+      try {
+        const extraction = await extractCommissionReport({
+          bytes, mime, currencyHint: ctx.business.base_currency,
+          todayIso: new Date().toISOString().slice(0, 10),
+        });
+        const reconciliation = await persistCommissionReportExtraction(ctx, document.id, extraction);
+        return NextResponse.json({
+          ok: true,
+          document: { ...document, extracted: undefined },
+          report: {
+            rowCount: reconciliation.rows.length,
+            matchedCount: reconciliation.rows.filter((r) => r.status === 'matched').length,
+            attentionCount: reconciliation.rows.filter((r) => r.status === 'needs_attention').length + (reconciliation.reportAnomaly ? 1 : 0),
+          },
+        });
+      } catch (error) {
+        const e = toServiceError(error, 'read that commission report');
+        await ctx.db.from('documents').update({
+          status: 'failed', extraction_error: e.message, extraction_method: 'ai_vision',
+        }).eq('id', document.id);
+        return NextResponse.json({
+          ok: true, document: { ...document, extracted: undefined }, extraction: null,
+          message: 'Saved as evidence, but no report rows could be read. Try a clearer image.',
+        });
+      }
     }
 
     const { data: categories } = await ctx.db

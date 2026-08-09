@@ -20,6 +20,7 @@ import type { BusinessContext } from '@/lib/services/context';
 import { TRANSACTION_KINDS, type TransactionKind } from '@/lib/domain/semantics';
 import { createHash } from 'node:crypto';
 import { assertOwned, assertTransactionsOwned } from '@/lib/services/ownership';
+import { createBooking } from '@/lib/services/bookings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     if (!body.businessId) throw new ServiceError('validation', 'Missing business.');
     const proposal = body.proposal;
-    const KNOWN_KINDS = ['transaction', 'invoice_draft', 'categorize'];
+    const KNOWN_KINDS = ['transaction', 'invoice_draft', 'categorize', 'booking'];
     if (!proposal || !KNOWN_KINDS.includes(String(proposal.kind))) {
       throw new ServiceError('validation', 'That proposal is not something I can record.');
     }
@@ -120,6 +121,29 @@ export async function POST(req: NextRequest) {
         requestId, businessId: ctx.businessId, userId: ctx.userId, count: changed,
       });
       return NextResponse.json({ ok: true, categorizedCount: changed });
+    }
+
+    if (proposal.kind === 'booking') {
+      if (ctx.business.business_type !== 'travel') throw new ServiceError('validation', 'This is not a travel business.');
+      const rawBookings = Array.isArray((proposal as Record<string, unknown>).bookings)
+        ? (proposal as Record<string, unknown>).bookings as Array<Record<string, unknown>> : [];
+      if (!rawBookings.length || rawBookings.length > 50) throw new ServiceError('validation', 'That booking proposal is empty or too large.');
+      const created = [];
+      for (const item of rawBookings) {
+        const reference = String(item.reference ?? '').trim(); const commissionMajor = Number(item.commissionMajor);
+        if (!reference || !Number.isFinite(commissionMajor) || commissionMajor <= 0) throw new ServiceError('validation', 'Every booking needs a reference and positive commission.');
+        created.push(await createBooking(ctx, {
+          reference, commissionMajor, grossValueMajor: 0, description: `Booking ${reference}`,
+          serviceDate: typeof item.departureDate === 'string' ? item.departureDate : null,
+          returnDate: typeof item.returnDate === 'string' ? item.returnDate : null,
+          clientName: typeof item.clientName === 'string' ? item.clientName : null,
+          supplierName: typeof item.supplierName === 'string' ? item.supplierName : null,
+          hostAgencyName: typeof item.hostAgencyName === 'string' ? item.hostAgencyName : null,
+          notes: typeof item.notes === 'string' ? item.notes : null, source: 'zylx',
+        }));
+      }
+      await recordApproval(ctx, idempotencyKey, 'booking', 'bookings', created[0]?.id ?? null, { bookings: created });
+      return NextResponse.json({ ok: true, bookings: created });
     }
 
     // ── Invoice drafts ──

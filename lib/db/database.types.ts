@@ -268,12 +268,15 @@ export type Database = {
           currency: string
           description: string | null
           gross_value_minor: number
+          host_agency_id: string | null
           id: string
           notes: string | null
           project_id: string | null
           recognition_mode: string
           reference: string | null
           service_date: string | null
+          return_date: string | null
+          source: Database["public"]["Enums"]["data_source"]
           service_fee_minor: number
           status: string
           supplier_id: string | null
@@ -293,12 +296,15 @@ export type Database = {
           currency?: string
           description?: string | null
           gross_value_minor?: number
+          host_agency_id?: string | null
           id?: string
           notes?: string | null
           project_id?: string | null
           recognition_mode?: string
           reference?: string | null
           service_date?: string | null
+          return_date?: string | null
+          source?: Database["public"]["Enums"]["data_source"]
           service_fee_minor?: number
           status?: string
           supplier_id?: string | null
@@ -318,12 +324,15 @@ export type Database = {
           currency?: string
           description?: string | null
           gross_value_minor?: number
+          host_agency_id?: string | null
           id?: string
           notes?: string | null
           project_id?: string | null
           recognition_mode?: string
           reference?: string | null
           service_date?: string | null
+          return_date?: string | null
+          source?: Database["public"]["Enums"]["data_source"]
           service_fee_minor?: number
           status?: string
           supplier_id?: string | null
@@ -347,6 +356,13 @@ export type Database = {
           {
             foreignKeyName: "bookings_client_id_fkey"
             columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "counterparties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bookings_host_agency_id_fkey"
+            columns: ["host_agency_id"]
             isOneToOne: false
             referencedRelation: "counterparties"
             referencedColumns: ["id"]
@@ -677,6 +693,8 @@ export type Database = {
           id: string
           notes: string | null
           received_on: string
+          report_document_id: string | null
+          report_line_id: string | null
           transaction_id: string | null
         }
         Insert: {
@@ -689,6 +707,8 @@ export type Database = {
           id?: string
           notes?: string | null
           received_on?: string
+          report_document_id?: string | null
+          report_line_id?: string | null
           transaction_id?: string | null
         }
         Update: {
@@ -701,6 +721,8 @@ export type Database = {
           id?: string
           notes?: string | null
           received_on?: string
+          report_document_id?: string | null
+          report_line_id?: string | null
           transaction_id?: string | null
         }
         Relationships: [
@@ -719,10 +741,103 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "commission_payments_report_document_id_fkey"
+            columns: ["report_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payments_report_line_id_fkey"
+            columns: ["report_line_id"]
+            isOneToOne: true
+            referencedRelation: "commission_report_lines"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "commission_payments_transaction_id_fkey"
             columns: ["transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_report_lines: {
+        Row: {
+          anomaly_code: string | null
+          anomaly_detail: string | null
+          business_id: string
+          created_at: string
+          currency: string | null
+          document_id: string
+          extraction_confidence: number | null
+          id: string
+          match_status: string
+          matched_booking_id: string | null
+          normalized_booking_reference: string | null
+          raw_booking_reference: string | null
+          reported_amount_minor: number | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          row_position: number
+        }
+        Insert: {
+          anomaly_code?: string | null
+          anomaly_detail?: string | null
+          business_id: string
+          created_at?: string
+          currency?: string | null
+          document_id: string
+          extraction_confidence?: number | null
+          id?: string
+          match_status?: string
+          matched_booking_id?: string | null
+          normalized_booking_reference?: string | null
+          raw_booking_reference?: string | null
+          reported_amount_minor?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          row_position: number
+        }
+        Update: {
+          anomaly_code?: string | null
+          anomaly_detail?: string | null
+          business_id?: string
+          created_at?: string
+          currency?: string | null
+          document_id?: string
+          extraction_confidence?: number | null
+          id?: string
+          match_status?: string
+          matched_booking_id?: string | null
+          normalized_booking_reference?: string | null
+          raw_booking_reference?: string | null
+          reported_amount_minor?: number | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          row_position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_report_lines_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_report_lines_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_report_lines_matched_booking_id_fkey"
+            columns: ["matched_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
             referencedColumns: ["id"]
           },
         ]
@@ -2372,6 +2487,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bdm_approve_commission_report: {
+        Args: { p_document_id: string }
+        Returns: Json
+      }
       bdm_ar_position: {
         Args: { p_business_id: string }
         Returns: {

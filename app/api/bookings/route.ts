@@ -37,6 +37,10 @@ export async function POST(req: NextRequest) {
       serviceFeeMajor: body.serviceFeeMajor ?? null,
       bookingDate: body.bookingDate,
       serviceDate: body.serviceDate ?? null,
+      returnDate: body.returnDate ?? null,
+      hostAgencyName: body.hostAgencyName ?? null,
+      currency: body.currency ?? null,
+      source: body.source === 'zylx' ? 'zylx' : body.source === 'import' || body.source === 'csv' ? 'csv' : 'manual',
       brandId: body.brandId ?? null,
       notes: body.notes ?? null,
     });
