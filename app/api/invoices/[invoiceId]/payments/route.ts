@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireBusiness } from '@/lib/services/context';
 import { ServiceError, logError, logEvent, toServiceError } from '@/lib/services/errors';
-import { recordInvoicePayment, deleteInvoicePayment } from '@/lib/services/invoices';
+import { recordInvoicePayment, reverseInvoicePayment } from '@/lib/services/invoices';
 import { parseMajorToMinor } from '@/lib/domain/money';
 
 export const runtime = 'nodejs';
@@ -62,22 +62,28 @@ export async function POST(req: NextRequest, { params }: { params: { invoiceId: 
 export async function DELETE(req: NextRequest) {
   const requestId = crypto.randomUUID();
   try {
-    const p = req.nextUrl.searchParams;
-    const businessId = p.get('businessId');
-    const paymentId = p.get('paymentId');
+    // The reason is written onto a financial record and can name people
+    // or amounts, so it travels in the body rather than the query string.
+    const body = await req.json().catch(() => ({}));
+    const businessId = String(body?.businessId ?? req.nextUrl.searchParams.get('businessId') ?? '');
+    const paymentId = String(body?.paymentId ?? req.nextUrl.searchParams.get('paymentId') ?? '');
+    const reason = String(body?.reason ?? '');
     if (!businessId || !paymentId) {
       throw new ServiceError('validation', 'Missing business or payment.');
     }
+    if (!reason.trim()) {
+      throw new ServiceError('validation', 'Give a reason for reversing this payment.');
+    }
     const ctx = await requireBusiness(businessId, 'member');
-    const invoice = await deleteInvoicePayment(ctx, paymentId, {
+    const invoice = await reverseInvoicePayment(ctx, paymentId, reason, {
       actorType: 'user',
       source: 'manual',
       requestId,
     });
     return NextResponse.json({ ok: true, invoice });
   } catch (error) {
-    const e = toServiceError(error, 'remove that payment');
-    logError('invoice.payment_delete_failed', e, { requestId });
+    const e = toServiceError(error, 'reverse that payment');
+    logError('invoice.payment_reversal_failed', e, { requestId });
     return NextResponse.json(e.toJSON(), { status: e.status });
   }
 }

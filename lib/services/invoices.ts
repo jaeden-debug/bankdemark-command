@@ -680,39 +680,32 @@ export async function issueInvoice(
     kind: client.data.kind,
   };
 
-  // Atomic, server-side, race-free.
-  const { data: numberData, error: numberError } = await ctx.db.rpc(
-    'bdm_next_invoice_number',
-    { p_business_id: ctx.businessId }
-  );
-  if (numberError || !numberData) {
-    throw new ServiceError('internal', 'Could not assign an invoice number.', {
-      detail: numberError?.message,
-      cause: numberError,
-    });
-  }
-
   const shareToken = randomBytes(32).toString('base64url');
 
-  const invoice = unwrap(
-    await ctx.db
-      .from('invoices')
-      .update({
-        number: String(numberData),
-        status: 'issued',
-        issued_at: new Date().toISOString(),
-        issued_business_snapshot: businessSnapshot as never,
-        issued_client_snapshot: clientSnapshot as never,
-        share_token: shareToken,
-      })
-      .eq('id', invoiceId)
-      .eq('business_id', ctx.businessId)
-      // Losing this race means someone else issued it first.
-      .eq('status', 'draft')
-      .select(INVOICE_COLUMNS)
-      .single(),
-    'issue that invoice'
-  ) as unknown as InvoiceRow;
+  // Allocation and the draft -> issued transition happen inside ONE
+  // database transaction (bdm_issue_invoice, migration
+  // 20260809010000_historical_invoice_records). Direct execution of the
+  // allocator bdm_next_invoice_number was revoked from `authenticated` in
+  // 20260809020000, precisely so a request cannot burn a sequence value
+  // and then fail before finalizing the invoice.
+  //
+  // Command and Invoice share this database, so they must issue the same
+  // way. The RPC also sets finalized_at, which the invoices_record_lifecycle
+  // constraint now requires on every non-draft record.
+  const { data: issued, error: issueError } = await ctx.db.rpc('bdm_issue_invoice', {
+    p_business_id: ctx.businessId,
+    p_invoice_id: invoiceId,
+    p_business_snapshot: businessSnapshot as never,
+    p_client_snapshot: clientSnapshot as never,
+    p_share_token: shareToken,
+  });
+  if (issueError || !issued) {
+    throw new ServiceError('conflict', 'Could not issue that draft. It may already have been issued.', {
+      detail: issueError?.message,
+      cause: issueError,
+    });
+  }
+  const invoice = issued as unknown as InvoiceRow;
 
   await logInvoiceEvent(ctx, invoiceId, 'issued', {
     number: invoice.number,
@@ -1067,31 +1060,62 @@ export async function recordInvoicePayment(
   return { payment, invoice: after };
 }
 
-export async function deleteInvoicePayment(
+/**
+ * Reverse a payment. Never delete one.
+ *
+ * The shared kernel revoked DELETE on invoice_payments and added
+ * bdm_guard_invoice_payment_history (migration 20260809010000): a
+ * recorded payment is a statement about money that moved, so a wrong one
+ * is marked reversed with a reason and kept. Status and balance are then
+ * re-derived from the remaining active payments.
+ */
+export async function reverseInvoicePayment(
   ctx: BusinessContext,
   paymentId: string,
+  reason: string,
   options: WriteOptions = {}
 ): Promise<InvoiceRow> {
+  const reversalReason = reason?.trim();
+  if (!reversalReason) {
+    throw new ServiceError('validation', 'Give a reason for reversing this payment. It goes on the record.');
+  }
+
   const payment = unwrapMaybe(
     await ctx.db
       .from('invoice_payments')
-      .select('id, invoice_id, amount_minor, received_on')
+      .select('id, invoice_id, amount_minor, received_on, reversed_at')
       .eq('id', paymentId)
       .eq('business_id', ctx.businessId)
       .maybeSingle(),
     'find that payment'
-  ) as { id: string; invoice_id: string; amount_minor: number; received_on: string } | null;
+  ) as {
+    id: string;
+    invoice_id: string;
+    amount_minor: number;
+    received_on: string;
+    reversed_at: string | null;
+  } | null;
   if (!payment) throw new ServiceError('not_found', 'That payment could not be found.');
+  if (payment.reversed_at) throw new ServiceError('conflict', 'That payment is already reversed.');
 
-  assertOk(
-    await ctx.db.from('invoice_payments').delete().eq('id', paymentId).eq('business_id', ctx.businessId),
-    'remove that payment'
-  );
+  const { error: reversalError } = await ctx.db.rpc('bdm_reverse_invoice_payment', {
+    p_business_id: ctx.businessId,
+    p_payment_id: paymentId,
+    p_reason: reversalReason.slice(0, 500),
+  });
+  if (reversalError) {
+    throw new ServiceError('conflict', 'Could not reverse that payment.', {
+      detail: reversalError.message,
+      cause: reversalError,
+    });
+  }
 
   const invoice = await requireInvoice(ctx, payment.invoice_id);
 
-  await logInvoiceEvent(ctx, payment.invoice_id, 'payment_removed', {
+  await logInvoiceEvent(ctx, payment.invoice_id, 'payment.reversed', {
     amount_minor: payment.amount_minor,
+    received_on: payment.received_on,
+    reason: reversalReason,
     balance_minor: invoice.balance_minor,
   }, options);
   await recordAudit(ctx.db, {
@@ -1100,8 +1124,9 @@ export async function deleteInvoicePayment(
     actorType: options.actorType ?? 'user',
     entity: 'invoice',
     entityId: payment.invoice_id,
-    action: 'payment_removed',
+    action: 'payment.reversed',
     before: payment,
+    after: { reversed: true, reason: reversalReason, status: invoice.status },
     source: options.source ?? 'manual',
     requestId: options.requestId,
   });

@@ -45,6 +45,7 @@ const EVENT_LABELS: Record<string, string> = {
   viewed: 'Viewed by client',
   payment_recorded: 'Payment recorded',
   payment_removed: 'Payment removed',
+  'payment.reversed': 'Payment reversed',
   voided: 'Voided',
   email_delivered: 'Email delivered',
   email_bounced: 'Email bounced',

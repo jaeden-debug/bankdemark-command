@@ -274,10 +274,10 @@ export type Database = {
           project_id: string | null
           recognition_mode: string
           reference: string | null
-          service_date: string | null
           return_date: string | null
-          source: Database["public"]["Enums"]["data_source"]
+          service_date: string | null
           service_fee_minor: number
+          source: Database["public"]["Enums"]["data_source"]
           status: string
           supplier_id: string | null
           updated_at: string
@@ -302,10 +302,10 @@ export type Database = {
           project_id?: string | null
           recognition_mode?: string
           reference?: string | null
-          service_date?: string | null
           return_date?: string | null
-          source?: Database["public"]["Enums"]["data_source"]
+          service_date?: string | null
           service_fee_minor?: number
+          source?: Database["public"]["Enums"]["data_source"]
           status?: string
           supplier_id?: string | null
           updated_at?: string
@@ -330,10 +330,10 @@ export type Database = {
           project_id?: string | null
           recognition_mode?: string
           reference?: string | null
-          service_date?: string | null
           return_date?: string | null
-          source?: Database["public"]["Enums"]["data_source"]
+          service_date?: string | null
           service_fee_minor?: number
+          source?: Database["public"]["Enums"]["data_source"]
           status?: string
           supplier_id?: string | null
           updated_at?: string
@@ -750,7 +750,7 @@ export type Database = {
           {
             foreignKeyName: "commission_payments_report_line_id_fkey"
             columns: ["report_line_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "commission_report_lines"
             referencedColumns: ["id"]
           },
@@ -844,8 +844,15 @@ export type Database = {
       }
       counterparties: {
         Row: {
+          account_number: string | null
+          address_line1: string | null
+          address_line2: string | null
           business_id: string
+          city: string | null
+          contact_name: string | null
+          country: string | null
           created_at: string
+          custom_fields: Json
           email: string | null
           id: string
           is_active: boolean
@@ -853,11 +860,21 @@ export type Database = {
           name: string
           notes: string | null
           phone: string | null
+          postal_code: string | null
+          region: string | null
+          tax_number: string | null
           updated_at: string
         }
         Insert: {
+          account_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
           business_id: string
+          city?: string | null
+          contact_name?: string | null
+          country?: string | null
           created_at?: string
+          custom_fields?: Json
           email?: string | null
           id?: string
           is_active?: boolean
@@ -865,11 +882,21 @@ export type Database = {
           name: string
           notes?: string | null
           phone?: string | null
+          postal_code?: string | null
+          region?: string | null
+          tax_number?: string | null
           updated_at?: string
         }
         Update: {
+          account_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
           business_id?: string
+          city?: string | null
+          contact_name?: string | null
+          country?: string | null
           created_at?: string
+          custom_fields?: Json
           email?: string | null
           id?: string
           is_active?: boolean
@@ -877,6 +904,9 @@ export type Database = {
           name?: string
           notes?: string | null
           phone?: string | null
+          postal_code?: string | null
+          region?: string | null
+          tax_number?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -1404,6 +1434,67 @@ export type Database = {
           },
         ]
       }
+      invoice_documents: {
+        Row: {
+          archive_reason: string | null
+          archived_at: string | null
+          archived_by: string | null
+          attached_at: string
+          attached_by: string | null
+          business_id: string
+          category: string
+          document_id: string
+          id: string
+          invoice_id: string
+        }
+        Insert: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          attached_at?: string
+          attached_by?: string | null
+          business_id: string
+          category?: string
+          document_id: string
+          id?: string
+          invoice_id: string
+        }
+        Update: {
+          archive_reason?: string | null
+          archived_at?: string | null
+          archived_by?: string | null
+          attached_at?: string
+          attached_by?: string | null
+          business_id?: string
+          category?: string
+          document_id?: string
+          id?: string
+          invoice_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_documents_business_id_fkey"
+            columns: ["business_id"]
+            isOneToOne: false
+            referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_documents_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_events: {
         Row: {
           actor_type: string
@@ -1559,6 +1650,9 @@ export type Database = {
           notes: string | null
           received_on: string
           reference: string | null
+          reversal_reason: string | null
+          reversed_at: string | null
+          reversed_by: string | null
           source: Database["public"]["Enums"]["data_source"]
           transaction_id: string | null
         }
@@ -1576,6 +1670,9 @@ export type Database = {
           notes?: string | null
           received_on?: string
           reference?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           source?: Database["public"]["Enums"]["data_source"]
           transaction_id?: string | null
         }
@@ -1593,6 +1690,9 @@ export type Database = {
           notes?: string | null
           received_on?: string
           reference?: string | null
+          reversal_reason?: string | null
+          reversed_at?: string | null
+          reversed_by?: string | null
           source?: Database["public"]["Enums"]["data_source"]
           transaction_id?: string | null
         }
@@ -1627,6 +1727,7 @@ export type Database = {
           address_line2: string | null
           business_id: string
           city: string | null
+          client_field_defs: Json
           country: string | null
           created_at: string
           default_due_days: number
@@ -1634,8 +1735,10 @@ export type Database = {
           default_payment_terms: string
           default_tax_code: string | null
           default_terms: string | null
+          design: Json
           email: string | null
           footer_text: string | null
+          identifiers: Json
           legal_name: string | null
           logo_path: string | null
           next_sequence: number
@@ -1650,6 +1753,7 @@ export type Database = {
           show_bdm_credit: boolean
           tax_number: string | null
           tax_number_label: string
+          tax_registrations: Json
           template: string
           updated_at: string
           website: string | null
@@ -1660,6 +1764,7 @@ export type Database = {
           address_line2?: string | null
           business_id: string
           city?: string | null
+          client_field_defs?: Json
           country?: string | null
           created_at?: string
           default_due_days?: number
@@ -1667,8 +1772,10 @@ export type Database = {
           default_payment_terms?: string
           default_tax_code?: string | null
           default_terms?: string | null
+          design?: Json
           email?: string | null
           footer_text?: string | null
+          identifiers?: Json
           legal_name?: string | null
           logo_path?: string | null
           next_sequence?: number
@@ -1683,6 +1790,7 @@ export type Database = {
           show_bdm_credit?: boolean
           tax_number?: string | null
           tax_number_label?: string
+          tax_registrations?: Json
           template?: string
           updated_at?: string
           website?: string | null
@@ -1693,6 +1801,7 @@ export type Database = {
           address_line2?: string | null
           business_id?: string
           city?: string | null
+          client_field_defs?: Json
           country?: string | null
           created_at?: string
           default_due_days?: number
@@ -1700,8 +1809,10 @@ export type Database = {
           default_payment_terms?: string
           default_tax_code?: string | null
           default_terms?: string | null
+          design?: Json
           email?: string | null
           footer_text?: string | null
+          identifiers?: Json
           legal_name?: string | null
           logo_path?: string | null
           next_sequence?: number
@@ -1716,6 +1827,7 @@ export type Database = {
           show_bdm_credit?: boolean
           tax_number?: string | null
           tax_number_label?: string
+          tax_registrations?: Json
           template?: string
           updated_at?: string
           website?: string | null
@@ -1735,6 +1847,8 @@ export type Database = {
           balance_minor: number
           booking_id: string | null
           business_id: string
+          corrected_from_id: string | null
+          correction_reason: string | null
           counterparty_id: string | null
           created_at: string
           created_by: string | null
@@ -1745,7 +1859,15 @@ export type Database = {
           discount_value: number
           document_id: string | null
           due_date: string
+          evidence_count: number
+          finalized_at: string | null
+          historical_entry_created_at: string | null
+          historical_tax_treatment:
+            | Database["public"]["Enums"]["historical_tax_treatment"]
+            | null
           id: string
+          imported_at: string | null
+          imported_by: string | null
           is_credit_note: boolean
           issue_date: string
           issued_at: string | null
@@ -1759,15 +1881,23 @@ export type Database = {
           payment_instructions: string | null
           payment_terms: string | null
           project_id: string | null
+          record_type: Database["public"]["Enums"]["invoice_record_type"]
           sent_at: string | null
+          service_date: string | null
           share_revoked_at: string | null
           share_token: string | null
           source: Database["public"]["Enums"]["data_source"]
+          source_due_date: string | null
+          source_invoice_date: string | null
+          source_invoice_number: string | null
           source_kind: Database["public"]["Enums"]["invoice_source_kind"]
+          source_system: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal_minor: number
           tax_breakdown: Json
+          tax_included: boolean
           tax_minor: number
+          tax_review_required: boolean
           terms: string | null
           total_minor: number
           updated_at: string
@@ -1779,6 +1909,8 @@ export type Database = {
           balance_minor?: number
           booking_id?: string | null
           business_id: string
+          corrected_from_id?: string | null
+          correction_reason?: string | null
           counterparty_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -1789,7 +1921,15 @@ export type Database = {
           discount_value?: number
           document_id?: string | null
           due_date?: string
+          evidence_count?: number
+          finalized_at?: string | null
+          historical_entry_created_at?: string | null
+          historical_tax_treatment?:
+            | Database["public"]["Enums"]["historical_tax_treatment"]
+            | null
           id?: string
+          imported_at?: string | null
+          imported_by?: string | null
           is_credit_note?: boolean
           issue_date?: string
           issued_at?: string | null
@@ -1803,15 +1943,23 @@ export type Database = {
           payment_instructions?: string | null
           payment_terms?: string | null
           project_id?: string | null
+          record_type?: Database["public"]["Enums"]["invoice_record_type"]
           sent_at?: string | null
+          service_date?: string | null
           share_revoked_at?: string | null
           share_token?: string | null
           source?: Database["public"]["Enums"]["data_source"]
+          source_due_date?: string | null
+          source_invoice_date?: string | null
+          source_invoice_number?: string | null
           source_kind?: Database["public"]["Enums"]["invoice_source_kind"]
+          source_system?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal_minor?: number
           tax_breakdown?: Json
+          tax_included?: boolean
           tax_minor?: number
+          tax_review_required?: boolean
           terms?: string | null
           total_minor?: number
           updated_at?: string
@@ -1823,6 +1971,8 @@ export type Database = {
           balance_minor?: number
           booking_id?: string | null
           business_id?: string
+          corrected_from_id?: string | null
+          correction_reason?: string | null
           counterparty_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -1833,7 +1983,15 @@ export type Database = {
           discount_value?: number
           document_id?: string | null
           due_date?: string
+          evidence_count?: number
+          finalized_at?: string | null
+          historical_entry_created_at?: string | null
+          historical_tax_treatment?:
+            | Database["public"]["Enums"]["historical_tax_treatment"]
+            | null
           id?: string
+          imported_at?: string | null
+          imported_by?: string | null
           is_credit_note?: boolean
           issue_date?: string
           issued_at?: string | null
@@ -1847,15 +2005,23 @@ export type Database = {
           payment_instructions?: string | null
           payment_terms?: string | null
           project_id?: string | null
+          record_type?: Database["public"]["Enums"]["invoice_record_type"]
           sent_at?: string | null
+          service_date?: string | null
           share_revoked_at?: string | null
           share_token?: string | null
           source?: Database["public"]["Enums"]["data_source"]
+          source_due_date?: string | null
+          source_invoice_date?: string | null
+          source_invoice_number?: string | null
           source_kind?: Database["public"]["Enums"]["invoice_source_kind"]
+          source_system?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal_minor?: number
           tax_breakdown?: Json
+          tax_included?: boolean
           tax_minor?: number
+          tax_review_required?: boolean
           terms?: string | null
           total_minor?: number
           updated_at?: string
@@ -1876,6 +2042,13 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_corrected_from_id_fkey"
+            columns: ["corrected_from_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
             referencedColumns: ["id"]
           },
           {
@@ -2519,6 +2692,168 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["transaction_kind"][]
       }
+      bdm_finalize_historical_record: {
+        Args: {
+          p_business_id: string
+          p_business_snapshot: Json
+          p_client_snapshot: Json
+          p_invoice_id: string
+          p_payments?: Json
+          p_record_type: Database["public"]["Enums"]["invoice_record_type"]
+          p_service_date: string
+          p_source_due_date: string
+          p_source_invoice_date: string
+          p_source_invoice_number: string
+          p_source_system: string
+          p_tax_included: boolean
+          p_tax_treatment: Database["public"]["Enums"]["historical_tax_treatment"]
+        }
+        Returns: {
+          balance_minor: number
+          booking_id: string | null
+          business_id: string
+          corrected_from_id: string | null
+          correction_reason: string | null
+          counterparty_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          custom_fields: Json
+          discount_kind: string
+          discount_minor: number
+          discount_value: number
+          document_id: string | null
+          due_date: string
+          evidence_count: number
+          finalized_at: string | null
+          historical_entry_created_at: string | null
+          historical_tax_treatment:
+            | Database["public"]["Enums"]["historical_tax_treatment"]
+            | null
+          id: string
+          imported_at: string | null
+          imported_by: string | null
+          is_credit_note: boolean
+          issue_date: string
+          issued_at: string | null
+          issued_business_snapshot: Json | null
+          issued_client_snapshot: Json | null
+          notes: string | null
+          number: string | null
+          paid_at: string | null
+          paid_minor: number
+          parent_invoice_id: string | null
+          payment_instructions: string | null
+          payment_terms: string | null
+          project_id: string | null
+          record_type: Database["public"]["Enums"]["invoice_record_type"]
+          sent_at: string | null
+          service_date: string | null
+          share_revoked_at: string | null
+          share_token: string | null
+          source: Database["public"]["Enums"]["data_source"]
+          source_due_date: string | null
+          source_invoice_date: string | null
+          source_invoice_number: string | null
+          source_kind: Database["public"]["Enums"]["invoice_source_kind"]
+          source_system: string | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal_minor: number
+          tax_breakdown: Json
+          tax_included: boolean
+          tax_minor: number
+          tax_review_required: boolean
+          terms: string | null
+          total_minor: number
+          updated_at: string
+          viewed_at: string | null
+          void_reason: string | null
+          voided_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "invoices"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      bdm_issue_invoice: {
+        Args: {
+          p_business_id: string
+          p_business_snapshot: Json
+          p_client_snapshot: Json
+          p_invoice_id: string
+          p_share_token: string
+        }
+        Returns: {
+          balance_minor: number
+          booking_id: string | null
+          business_id: string
+          corrected_from_id: string | null
+          correction_reason: string | null
+          counterparty_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          custom_fields: Json
+          discount_kind: string
+          discount_minor: number
+          discount_value: number
+          document_id: string | null
+          due_date: string
+          evidence_count: number
+          finalized_at: string | null
+          historical_entry_created_at: string | null
+          historical_tax_treatment:
+            | Database["public"]["Enums"]["historical_tax_treatment"]
+            | null
+          id: string
+          imported_at: string | null
+          imported_by: string | null
+          is_credit_note: boolean
+          issue_date: string
+          issued_at: string | null
+          issued_business_snapshot: Json | null
+          issued_client_snapshot: Json | null
+          notes: string | null
+          number: string | null
+          paid_at: string | null
+          paid_minor: number
+          parent_invoice_id: string | null
+          payment_instructions: string | null
+          payment_terms: string | null
+          project_id: string | null
+          record_type: Database["public"]["Enums"]["invoice_record_type"]
+          sent_at: string | null
+          service_date: string | null
+          share_revoked_at: string | null
+          share_token: string | null
+          source: Database["public"]["Enums"]["data_source"]
+          source_due_date: string | null
+          source_invoice_date: string | null
+          source_invoice_number: string | null
+          source_kind: Database["public"]["Enums"]["invoice_source_kind"]
+          source_system: string | null
+          status: Database["public"]["Enums"]["invoice_status"]
+          subtotal_minor: number
+          tax_breakdown: Json
+          tax_included: boolean
+          tax_minor: number
+          tax_review_required: boolean
+          terms: string | null
+          total_minor: number
+          updated_at: string
+          viewed_at: string | null
+          void_reason: string | null
+          voided_at: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "invoices"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       bdm_next_invoice_number: {
         Args: { p_business_id: string }
         Returns: string
@@ -2534,6 +2869,10 @@ export type Database = {
       bdm_revenue_types: {
         Args: never
         Returns: Database["public"]["Enums"]["transaction_kind"][]
+      }
+      bdm_reverse_invoice_payment: {
+        Args: { p_business_id: string; p_payment_id: string; p_reason: string }
+        Returns: string
       }
       bdm_role_rank: {
         Args: { r: Database["public"]["Enums"]["business_role"] }
@@ -2578,12 +2917,22 @@ export type Database = {
         | "square"
         | "bank_feed"
         | "system"
+      historical_tax_treatment:
+        | "no_tax"
+        | "gst_hst"
+        | "gst_qst"
+        | "tax_included"
+        | "unknown_review"
       invoice_delivery_state:
         | "queued"
         | "sent"
         | "delivered"
         | "bounced"
         | "failed"
+      invoice_record_type:
+        | "standard"
+        | "historical_transaction"
+        | "imported_invoice"
       invoice_source_kind:
         | "manual"
         | "booking"
@@ -2784,12 +3133,24 @@ export const Constants = {
         "bank_feed",
         "system",
       ],
+      historical_tax_treatment: [
+        "no_tax",
+        "gst_hst",
+        "gst_qst",
+        "tax_included",
+        "unknown_review",
+      ],
       invoice_delivery_state: [
         "queued",
         "sent",
         "delivered",
         "bounced",
         "failed",
+      ],
+      invoice_record_type: [
+        "standard",
+        "historical_transaction",
+        "imported_invoice",
       ],
       invoice_source_kind: [
         "manual",
