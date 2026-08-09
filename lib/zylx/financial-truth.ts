@@ -120,6 +120,17 @@ function deterministicFallback(result: Record<string, unknown>): string {
     }
     return lines.length ? `Paid versus pending commission: ${lines.join('; ')}.` : 'No commission chart data is available.';
   }
+  if (tool === 'get_commission_anomalies') {
+    const rows = Array.isArray(data.anomalies) ? data.anomalies as Array<Record<string, unknown>> : [];
+    if (!rows.length) return 'No unresolved commission report anomalies were found.';
+    return rows.map((row) => {
+      const expected = row.expectedOutstanding as DisplayMoney | null;
+      const reported = row.reportedAmount as DisplayMoney | null;
+      const amounts = [expected ? `expected ${expected.display}` : null, reported ? `reported ${reported.display}` : null]
+        .filter(Boolean).join(', ');
+      return `${String(row.reference ?? 'Unknown booking')}: ${String(row.code ?? 'NEEDS_ATTENTION')}${amounts ? ` (${amounts})` : ''}.`;
+    }).join(' ');
+  }
   const values = Object.entries(formatted).filter(([, value]) => typeof value === 'string');
   if (values.length) return values.map(([key, value]) => `${key}: ${value}`).join('. ') + '.';
   return 'I retrieved your current BankDeMark records, but could not safely format an answer.';

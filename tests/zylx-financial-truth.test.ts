@@ -62,6 +62,23 @@ describe('Zylx financial truth boundary', () => {
     expect(safe.pending).toMatchObject({ minor: 61500, currency: 'CAD', unit: 'minor_currency_units', display: '$615.00' });
   });
 
+  it('falls back to typed anomaly amounts without reinterpreting minor units', () => {
+    const result = {
+      ok: true,
+      tool: 'get_commission_anomalies',
+      data: { anomalies: [{
+        reference: 'TEST-ABC124',
+        code: 'AMOUNT_MISMATCH',
+        expectedOutstanding: displayMoney(61500, 'CAD'),
+        reportedAmount: displayMoney(59000, 'CAD'),
+      }] },
+    };
+    const answer = verifiedFinancialAnswer('Expected $61,500 and reported $590.00.', result);
+    expect(answer).toContain('expected $615.00');
+    expect(answer).toContain('reported $590.00');
+    expect(answer).not.toContain('$61,500');
+  });
+
   it('does not require workspace tools for general education', () => {
     expect(requiresWorkspaceFinancialTool('What is commission?')).toBe(false);
     expect(requiresWorkspaceFinancialTool('How does a 10% commission work?')).toBe(false);

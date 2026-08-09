@@ -745,7 +745,27 @@ export async function executeTool(
 
       case 'get_commission_anomalies': {
         const rows = await getCommissionAnomalies(ctx, Number(args.limit) || 100);
-        return { ok: true, tool: name, data: { count: rows.length, anomalies: rows.map((r) => ({ reference: r.raw_booking_reference, code: r.anomaly_code, detail: r.anomaly_detail, reportedAmount: r.reported_amount_minor == null ? null : displayMoney(r.reported_amount_minor, r.currency || currency), documentId: r.document_id })) }, formatted: { anomalyCount: String(rows.length) } };
+        const bookingIds = [...new Set(rows.flatMap((row) => row.matched_booking_id ? [row.matched_booking_id] : []))];
+        const { data: matchedBookings } = bookingIds.length
+          ? await ctx.db.from('bookings').select('id, commission_expected_minor, commission_received_minor, currency')
+              .eq('business_id', ctx.businessId).in('id', bookingIds)
+          : { data: [] };
+        const bookingById = new Map((matchedBookings ?? []).map((booking) => [booking.id, booking]));
+        return { ok: true, tool: name, data: { count: rows.length, anomalies: rows.map((r) => {
+          const booking = r.matched_booking_id ? bookingById.get(r.matched_booking_id) : null;
+          return {
+            reference: r.raw_booking_reference,
+            code: r.anomaly_code,
+            detail: r.anomaly_code === 'AMOUNT_MISMATCH'
+              ? 'Reported commission does not match the current outstanding commission.'
+              : r.anomaly_detail,
+            expectedOutstanding: booking
+              ? displayMoney(Math.max(0, booking.commission_expected_minor - booking.commission_received_minor), booking.currency)
+              : null,
+            reportedAmount: r.reported_amount_minor == null ? null : displayMoney(r.reported_amount_minor, r.currency || currency),
+            documentId: r.document_id,
+          };
+        }) }, formatted: { anomalyCount: String(rows.length) } };
       }
 
       case 'get_commission_chart_data': {
