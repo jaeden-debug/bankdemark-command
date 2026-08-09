@@ -91,7 +91,13 @@ export interface ZylxChartBlock {
   type: 'chart';
   title?: string;
   chartKind: 'bar' | 'line' | 'stacked-bar';
-  series: Array<{ label: string; points: Array<{ x: string; y: number }> }>;
+  series: Array<{
+    label: string;
+    points: Array<{
+      x: string;
+      amount: { minor: number; currency: string; unit: 'minor_currency_units'; display: string };
+    }>;
+  }>;
   yFormat: 'currency' | 'number' | 'percent';
   currency?: string;
 }

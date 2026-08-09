@@ -53,6 +53,7 @@ import {
 } from '@/lib/services/invoices';
 import { daysOverdue, computeInvoiceTotals } from '@/lib/domain/invoice';
 import { getCommissionAnomalies, getCommissionReport, getTravelCommissionPipeline } from '@/lib/services/commission-reports';
+import { displayMoney } from './financial-truth';
 
 /**
  * Server-authoritative risk tier. The model does NOT declare this and
@@ -163,7 +164,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     parameters: { type: 'object', properties: {
       reference: { type: 'string' }, status: { type: 'string', enum: ['pending','paid','needs_attention','all'] },
       supplier: { type: 'string' }, dateFrom: { type: 'string' }, dateTo: { type: 'string' },
-      minCommission: { type: 'number' }, maxCommission: { type: 'number' }, limit: { type: 'number' },
+      minCommission: { type: 'number', description: 'Minimum expected commission in major currency units.' },
+      minCommissionExclusive: { type: 'boolean', description: 'True for phrases such as over or greater than.' },
+      maxCommission: { type: 'number' }, limit: { type: 'number' },
     }, additionalProperties: false },
   },
   {
@@ -679,7 +682,10 @@ export async function executeTool(
         const supplierById = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
         const attention = new Set(anomalies.flatMap((a) => a.matched_booking_id ? [a.matched_booking_id] : []));
         const statusOf = (b: (typeof rows)[number]) => attention.has(b.id) ? 'needs_attention' : b.commission_expected_minor > 0 && b.commission_received_minor >= b.commission_expected_minor ? 'paid' : 'pending';
-        const min = args.minCommission == null ? null : parseMajorToMinor(Number(args.minCommission), currency);
+        const min = args.minCommissionMinor == null
+          ? args.minCommission == null ? null : parseMajorToMinor(Number(args.minCommission), currency)
+          : Number(args.minCommissionMinor);
+        const minExclusive = args.minCommissionExclusive === true;
         const max = args.maxCommission == null ? null : parseMajorToMinor(Number(args.maxCommission), currency);
         const filtered = rows.filter((b) => {
           const supplier = b.supplier_id ? supplierById.get(b.supplier_id) ?? '' : '';
@@ -688,20 +694,39 @@ export async function executeTool(
             (!args.supplier || supplier.toLowerCase().includes(String(args.supplier).toLowerCase())) &&
             (!args.dateFrom || (b.service_date && b.service_date >= String(args.dateFrom))) &&
             (!args.dateTo || (b.service_date && b.service_date <= String(args.dateTo))) &&
-            (min === null || (b.currency === currency && b.commission_expected_minor >= min)) &&
+            (min === null || (b.currency === currency && (minExclusive ? b.commission_expected_minor > min : b.commission_expected_minor >= min))) &&
             (max === null || (b.currency === currency && b.commission_expected_minor <= max));
         });
         const limit = Math.min(Math.max(Number(args.limit) || 50, 1), 200);
         return { ok: true, tool: name, data: {
           count: filtered.length,
-          bookings: filtered.slice(0, limit).map((b) => ({ reference: b.reference, departureDate: b.service_date, returnDate: b.return_date, supplier: b.supplier_id ? supplierById.get(b.supplier_id) ?? null : null, expectedCommission: formatMinor(b.commission_expected_minor, b.currency, { showMinor: true }), receivedCommission: formatMinor(b.commission_received_minor, b.currency, { showMinor: true }), status: statusOf(b) })),
+          bookings: filtered.slice(0, limit).map((b) => ({ reference: b.reference, departureDate: b.service_date, returnDate: b.return_date, supplier: b.supplier_id ? supplierById.get(b.supplier_id) ?? null : null, expectedCommission: displayMoney(b.commission_expected_minor, b.currency), receivedCommission: displayMoney(b.commission_received_minor, b.currency), status: statusOf(b) })),
           truncated: filtered.length > limit,
         }, formatted: { bookingCount: String(filtered.length) } };
       }
 
       case 'get_commission_pipeline': {
         const p = await getTravelCommissionPipeline(ctx);
-        return { ok: true, tool: name, data: { upcomingByMonth: p.byDepartureMonth, completedButUnpaid: p.completedPending, upcomingPending: p.upcomingPending }, formatted: {
+        return { ok: true, tool: name, data: {
+          currency,
+          unit: 'minor_currency_units',
+          byDepartureMonth: p.byDepartureMonth.map((month) => ({
+            month: month.month,
+            paid: displayMoney(month.paidMinor, currency),
+            pending: displayMoney(month.pendingMinor, currency),
+          })),
+          completedButUnpaid: p.completedPending.map((booking) => ({
+            reference: booking.reference,
+            expectedCommission: displayMoney(booking.commission_expected_minor, booking.currency),
+            receivedCommission: displayMoney(booking.commission_received_minor, booking.currency),
+          })),
+          upcomingPending: p.upcomingPending.map((booking) => ({
+            reference: booking.reference,
+            departureDate: booking.service_date,
+            expectedCommission: displayMoney(booking.commission_expected_minor, booking.currency),
+            receivedCommission: displayMoney(booking.commission_received_minor, booking.currency),
+          })),
+        }, formatted: {
           pending: fmt(p.pendingMinor), paid: fmt(p.paidMinor), completedCount: String(p.completedPending.length), average: fmt(p.averageExpectedMinor),
         } };
       }
@@ -715,19 +740,19 @@ export async function executeTool(
         if (!documentId) return { ok: false, tool: name, error: 'No commission report has been uploaded.' };
         const report = await getCommissionReport(ctx, documentId);
         const reportCurrency = report.document.currency || currency;
-        return { ok: true, tool: name, data: { document: report.document, rows: report.lines.map((l) => ({ reference: l.raw_booking_reference, reportedAmount: l.reported_amount_minor == null ? null : formatMinor(l.reported_amount_minor, reportCurrency, { showMinor: true }), status: l.match_status, anomaly: l.anomaly_code, detail: l.anomaly_detail })), notOnReport: report.notOnReport.map((b) => b.reference) } };
+        return { ok: true, tool: name, data: { document: report.document, rows: report.lines.map((l) => ({ reference: l.raw_booking_reference, reportedAmount: l.reported_amount_minor == null ? null : displayMoney(l.reported_amount_minor, reportCurrency), status: l.match_status, anomaly: l.anomaly_code, detail: l.anomaly_detail })), notOnReport: report.notOnReport.map((b) => b.reference) } };
       }
 
       case 'get_commission_anomalies': {
         const rows = await getCommissionAnomalies(ctx, Number(args.limit) || 100);
-        return { ok: true, tool: name, data: { count: rows.length, anomalies: rows.map((r) => ({ reference: r.raw_booking_reference, code: r.anomaly_code, detail: r.anomaly_detail, reportedAmount: r.reported_amount_minor == null ? null : formatMinor(r.reported_amount_minor, r.currency || currency, { showMinor: true }), documentId: r.document_id })) }, formatted: { anomalyCount: String(rows.length) } };
+        return { ok: true, tool: name, data: { count: rows.length, anomalies: rows.map((r) => ({ reference: r.raw_booking_reference, code: r.anomaly_code, detail: r.anomaly_detail, reportedAmount: r.reported_amount_minor == null ? null : displayMoney(r.reported_amount_minor, r.currency || currency), documentId: r.document_id })) }, formatted: { anomalyCount: String(rows.length) } };
       }
 
       case 'get_commission_chart_data': {
         const p = await getTravelCommissionPipeline(ctx);
-        return { ok: true, tool: name, data: { title: 'Paid vs pending commission by departure month', currency, dateRange: p.byDepartureMonth.length ? { from: p.byDepartureMonth[0].month, to: p.byDepartureMonth[p.byDepartureMonth.length - 1].month } : null, series: [
-          { label: 'Paid', points: p.byDepartureMonth.map((m) => ({ x: m.month, y: m.paidMinor })) },
-          { label: 'Pending', points: p.byDepartureMonth.map((m) => ({ x: m.month, y: m.pendingMinor })) },
+        return { ok: true, tool: name, data: { title: 'Paid vs pending commission by departure month', currency, unit: 'minor_currency_units', dateRange: p.byDepartureMonth.length ? { from: p.byDepartureMonth[0].month, to: p.byDepartureMonth[p.byDepartureMonth.length - 1].month } : null, series: [
+          { label: 'Paid', points: p.byDepartureMonth.map((m) => ({ x: m.month, amount: displayMoney(m.paidMinor, currency) })) },
+          { label: 'Pending', points: p.byDepartureMonth.map((m) => ({ x: m.month, amount: displayMoney(m.pendingMinor, currency) })) },
         ] } };
       }
 

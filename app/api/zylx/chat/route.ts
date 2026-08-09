@@ -19,6 +19,12 @@ import { executeTool, toolsForContext, TOOL_DEFINITIONS } from '@/lib/zylx/tools
 import { buildSystemPrompt } from '@/lib/zylx/prompt';
 import { recordAudit } from '@/lib/services/audit';
 import { buildBlocks, sanitizeBlocks } from '@/lib/zylx/envelope';
+import {
+  moneySafeForModel,
+  requiresWorkspaceFinancialTool,
+  routeWorkspaceFinancialTool,
+  verifiedFinancialAnswer,
+} from '@/lib/zylx/financial-truth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -110,6 +116,8 @@ export async function POST(req: NextRequest) {
     }
 
     const ctx = await requireBusiness(body.businessId, 'viewer');
+    const financialQuestion = requiresWorkspaceFinancialTool(message);
+    const financialRoute = routeWorkspaceFinancialTool(message, ctx.business.base_currency);
 
     // ── Plan + quota ─────────────────────────────────────────
     const profile = unwrapMaybe(
@@ -293,10 +301,27 @@ export async function POST(req: NextRequest) {
 
         const toolResults: Array<Record<string, unknown>> = [];
         const toolsUsed: string[] = [];
+        let verifiedFinancialResult: Record<string, unknown> | null = null;
         let answer = '';
 
         try {
+          if (financialQuestion && !financialRoute) {
+            answer = 'I couldn’t retrieve your current BankDeMark records for that question.';
+            send('text', { delta: answer });
+            send('done', {
+              conversationId,
+              toolsUsed,
+              usage: { used: (usedCount ?? 0) + 1, limit: quota.limit },
+            });
+            return;
+          }
+
           for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+            const toolChoice = financialRoute
+              ? round === 0
+                ? { type: 'function' as const, function: { name: financialRoute.tool } }
+                : 'none' as const
+              : 'auto' as const;
             const completion = await withRetry(
               () =>
                 openai.chat.completions.create(
@@ -304,7 +329,7 @@ export async function POST(req: NextRequest) {
                     model,
                     messages,
                     tools,
-                    tool_choice: 'auto',
+                    tool_choice: toolChoice,
                     temperature: 0.3,
                     max_tokens: 1200,
                     stream: true,
@@ -326,7 +351,7 @@ export async function POST(req: NextRequest) {
 
               if (delta.content) {
                 content += delta.content;
-                send('text', { delta: delta.content });
+                if (!financialQuestion) send('text', { delta: delta.content });
               }
 
               for (const tc of delta.tool_calls ?? []) {
@@ -340,7 +365,10 @@ export async function POST(req: NextRequest) {
 
             // No tools requested — this round is the final answer.
             if (calls.size === 0) {
-              answer = content;
+              answer = financialQuestion
+                ? verifiedFinancialAnswer(content, verifiedFinancialResult)
+                : content;
+              if (financialQuestion) send('text', { delta: answer });
               break;
             }
 
@@ -359,28 +387,37 @@ export async function POST(req: NextRequest) {
               // are not, so they never reach the client.
               send('status', { label: statusFor(call.name), tool: call.name });
 
-              let args: unknown = {};
+              let args: Record<string, unknown> = {};
               try {
-                args = JSON.parse(call.args || '{}');
+                args = JSON.parse(call.args || '{}') as Record<string, unknown>;
               } catch {
                 args = {};
+              }
+              if (financialRoute && call.name === financialRoute.tool) {
+                args = { ...args, ...financialRoute.enforcedArgs };
               }
 
               const result = await executeTool(ctx, call.name, args);
               toolsUsed.push(call.name);
               toolResults.push(result as unknown as Record<string, unknown>);
+              const modelSafeResult = moneySafeForModel(
+                result,
+                ctx.business.base_currency
+              ) as Record<string, unknown>;
+              if (financialQuestion) verifiedFinancialResult = modelSafeResult;
 
               messages.push({
                 role: 'tool',
                 tool_call_id: call.id,
-                content: JSON.stringify(result).slice(0, 12_000),
+                content: JSON.stringify(modelSafeResult).slice(0, 12_000),
               });
             }
           }
 
           if (!answer) {
-            answer =
-              'I looked that up but could not put together an answer. Try a narrower question, or open the relevant page directly.';
+            answer = financialQuestion
+              ? verifiedFinancialAnswer('', verifiedFinancialResult)
+              : 'I looked that up but could not put together an answer. Try a narrower question, or open the relevant page directly.';
             send('text', { delta: answer });
           }
 
