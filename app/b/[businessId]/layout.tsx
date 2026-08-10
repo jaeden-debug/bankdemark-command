@@ -6,6 +6,16 @@ import { ServiceError } from '@/lib/services/errors';
 
 export const dynamic = 'force-dynamic';
 
+// The root layout declares `index: true`, so without this every route
+// under /b/ — invoices, transactions, clients, receipts, P&L — inherits
+// permission to be indexed. Anonymous requests 307 to sign-in today, so
+// nothing is exposed, but a default-open posture on the most sensitive
+// paths in the product only has to be wrong once. Declared at the layout
+// so it covers routes added later without anyone remembering to.
+export const metadata = {
+  robots: { index: false, follow: false, nocache: true },
+};
+
 export default async function BusinessLayout({
   children,
   params,

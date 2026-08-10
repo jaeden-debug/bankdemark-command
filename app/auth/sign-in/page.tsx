@@ -3,6 +3,12 @@ import MagicLinkForm from '@/components/bdm/MagicLinkForm';
 
 export const dynamic = 'force-dynamic';
 
+// Sign-in pages are thin, near-identical across the ecosystem, and
+// useless as a search result. Kept crawlable-but-noindex rather than
+// only disallowed, so the instruction is unambiguous if it is linked.
+export const metadata = { robots: { index: false, follow: false } };
+
+
 const ERRORS: Record<string, string> = {
   link_expired:
     'That sign-in link has expired or was already used. Links work once and last an hour — request a new one below.',

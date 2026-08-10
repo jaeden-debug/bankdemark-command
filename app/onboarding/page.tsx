@@ -7,6 +7,10 @@ import { ServiceError } from '@/lib/services/errors';
 
 export const dynamic = 'force-dynamic';
 
+// Authenticated setup flow — 307s to sign-in for anyone else.
+export const metadata = { robots: { index: false, follow: false } };
+
+
 export default async function OnboardingPage() {
   let isFirst = true;
   try {
