@@ -26,17 +26,22 @@ import type { MetadataRoute } from 'next';
 
 const ORIGIN = 'https://command.bankdemark.com';
 
+// UPDATE 2026-08-14: this list is now deliberately EMPTY.
+//
+// command.bankdemark.com is an application domain. Its two formerly
+// public pages have both been de-indexed on purpose:
+//
+//   /command  — the product's marketing page now lives at
+//               https://bankdemark.com/products/command. Two pages
+//               competing for one query, across two domains, is a race
+//               against ourselves.
+//   /pricing  — byte-identical to invoice.bankdemark.com/pricing, which
+//               keeps the indexable copy.
+//
+// An empty sitemap is the honest answer for a domain with nothing to
+// index. It is kept rather than deleted so robots.txt still resolves its
+// `Sitemap:` line, and so the next person to add a public page finds this
+// note and has to decide, rather than defaulting it open.
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [
-    {
-      url: `${ORIGIN}/command`,
-      changeFrequency: 'monthly',
-      priority: 1,
-    },
-    {
-      url: `${ORIGIN}/pricing`,
-      changeFrequency: 'monthly',
-      priority: 0.8,
-    },
-  ];
+  return [];
 }

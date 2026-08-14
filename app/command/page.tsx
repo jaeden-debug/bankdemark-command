@@ -13,7 +13,6 @@ export const metadata: Metadata = {
   title: { absolute: 'BankDeMark Command | AI Financial Command Center for Business' },
   description:
     'Track revenue, expenses, commissions, cash flow and business wealth in one AI-powered financial command center, with Zylx built in to explain your numbers.',
-  // The old canonical pointed at bankdemark.com/command, which returns 404.
   alternates: { canonical: `${SITE}/command` },
   openGraph: {
     type: 'website',
@@ -30,7 +29,28 @@ export const metadata: Metadata = {
     description: 'Revenue, expenses, cash flow and commissions in one place — with Zylx to explain them.',
     images: ['/command-bankdemark-square-social-preview.png'],
   },
-  robots: { index: true, follow: true },
+  // ── Not the marketing page any more ──────────────────────────
+  // This is the signed-out entry to the application. The public,
+  // indexable marketing page for the product is
+  // https://bankdemark.com/products/command — one product, one page
+  // Google is asked to rank.
+  //
+  // Both pages previously carried the same title and targeted the same
+  // query from two different domains, which is a competition we would
+  // have been running against ourselves. The public site is the right
+  // winner: it holds the domain's authority, its pillar and blog
+  // clusters link into it, and marketing belongs on the marketing site.
+  //
+  // Nothing here is deleted. Everything below — the live-module list,
+  // the explicit "Not yet" section, the Zylx examples, the demo
+  // dashboard — is what a signed-out visitor who arrived at the app
+  // domain directly should still see before they sign in.
+  //
+  // `follow` is kept so link equity still flows out to the public page.
+  // robots.txt continues to ALLOW /command: a disallowed URL can still
+  // be indexed from an external link, and Googlebot has to be able to
+  // fetch the page to read this instruction at all.
+  robots: { index: false, follow: true },
 };
 
 // ── Feature truth ───────────────────────────────────────────

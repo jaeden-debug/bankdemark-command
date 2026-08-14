@@ -4,9 +4,25 @@ import PricingActions from '@/components/bdm/PricingActions';
 
 export const dynamic = 'force-dynamic';
 
+// ── Duplicate surface, deliberately de-indexed ───────────────
+// This page is byte-identical to invoice.bankdemark.com/pricing — both
+// render from the same lib/config/plans.ts, which is the same file in
+// both repositories. Two identical pages on two subdomains, both
+// index+follow with no canonical between them, is a duplicate Google
+// resolves by guessing.
+//
+// Invoice keeps the indexable copy: the plan limits are invoicing limits
+// (invoices per month, active clients, delivery tracking), so that is the
+// page the content actually describes. This one stays fully usable for
+// anyone in Command who clicks through to it — noindex affects listing,
+// not access.
+//
+// The title also said "BankDeMark Invoicing" on the Command domain, which
+// was simply the wrong product name in front of the wrong audience.
 export const metadata = {
-  title: 'Pricing — BankDeMark Invoicing',
-  description: 'Create and send professional invoices. Plans from free to $49 CAD a month.',
+  title: 'Pricing — BankDeMark',
+  description: 'Plans for BankDeMark Invoice and Command, from free to $49 CAD a month.',
+  robots: { index: false, follow: true },
 };
 
 export default function PricingPage({ searchParams }: { searchParams: { checkout?: string } }) {
@@ -16,9 +32,13 @@ export default function PricingPage({ searchParams }: { searchParams: { checkout
         <Link href="/" className="text-[20px] font-extrabold tracking-brand">
           <span className="text-ink">Bank</span><span className="text-gold">DeMark</span>
         </Link>
-        <h1 className="bdm-h1 mt-4">Invoicing that gets you paid</h1>
+        {/* Product-neutral: these plans are the shared BankDeMark
+            entitlements, and this page is reachable from Command as well
+            as Invoice. The previous heading named only one of them. */}
+        <h1 className="bdm-h1 mt-4">Plans for your BankDeMark account</h1>
         <p className="bdm-sub mt-2">
-          Start free. Upgrade when you need more. Prices in CAD, cancel any time.
+          One account covers Command and Invoice. Start free, upgrade when you need
+          more. Prices in CAD, cancel any time.
         </p>
       </header>
 

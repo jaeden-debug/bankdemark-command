@@ -30,8 +30,11 @@ export default function SignInPage({
             <span className="text-ink">Bank</span>
             <span className="text-gold">DeMark</span>
           </Link>
+          {/* The product being entered, not the product this file was
+              copied from. One BankDeMark identity signs you in to both
+              applications — the label says which one you are opening. */}
           <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-muted">
-            Invoicing
+            Command
           </p>
         </div>
 
@@ -50,7 +53,8 @@ export default function SignInPage({
         <MagicLinkForm next={searchParams.next} />
 
         <p className="mt-6 text-center text-xs text-muted">
-          Create and send professional invoices. Get paid faster.
+          One BankDeMark account for Command and Invoice. New here? Entering your
+          email creates the account — there is no separate sign-up.
         </p>
       </div>
     </main>
