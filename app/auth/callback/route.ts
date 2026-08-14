@@ -12,16 +12,16 @@ import { ecosystemCookieOptions } from '@/lib/config/cookies';
 import { cookies } from 'next/headers';
 import { appUrl } from '@/lib/config/app-url';
 import { logError, logEvent } from '@/lib/services/errors';
+import { resolveCommandDestination, safeInternalPath } from '@/lib/services/post-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SAFE_NEXT = /^\/[A-Za-z0-9/_-]*$/;
-
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const rawNext = req.nextUrl.searchParams.get('next') ?? '/command';
-  const next = SAFE_NEXT.test(rawNext) ? rawNext : '/command';
+  // Held raw until the session exists — resolving a destination needs an
+  // authenticated context, and an unsafe value must not survive that far.
+  const rawNext = req.nextUrl.searchParams.get('next');
 
   const fail = (reason: string) =>
     NextResponse.redirect(appUrl(`/auth/sign-in?error=${encodeURIComponent(reason)}`));
@@ -51,7 +51,12 @@ export async function GET(req: NextRequest) {
     }
 
     logEvent('auth.signed_in', { route: '/auth/callback' });
-    return NextResponse.redirect(appUrl(next));
+
+    // A deep link the user was sent to sign in for wins. Otherwise work
+    // out where this account belongs: onboarding with no business, the
+    // business itself with one, the selector with several.
+    const fallback = await resolveCommandDestination();
+    return NextResponse.redirect(appUrl(safeInternalPath(rawNext, fallback)));
   } catch (error) {
     logError('auth.callback_failed', error, { route: '/auth/callback' });
     return fail('link_invalid');

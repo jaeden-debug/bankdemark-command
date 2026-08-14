@@ -26,8 +26,16 @@ export async function POST(req: NextRequest) {
       throw new ServiceError('validation', 'Enter a valid email address.');
     }
 
-    const next = typeof body?.next === 'string' && SAFE_NEXT.test(body.next) ? body.next : '/command';
-    const redirectTo = appUrl(`/auth/callback?next=${encodeURIComponent(next)}`);
+    // Only carry `next` when the caller actually asked for somewhere. A
+    // manufactured default of '/command' is indistinguishable at the
+    // callback from a user who deep-linked there on purpose, and it was
+    // what forced every sign-in through the same fixed landing page.
+    // Absent `next` now means "decide where I belong" — see
+    // resolveCommandDestination.
+    const next = typeof body?.next === 'string' && SAFE_NEXT.test(body.next) ? body.next : null;
+    const redirectTo = appUrl(
+      next ? `/auth/callback?next=${encodeURIComponent(next)}` : '/auth/callback'
+    );
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

@@ -350,7 +350,9 @@ export async function renderInvoicePdf(html: string): Promise<PdfResult> {
 }
 
 interface Launcher {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // `any` on purpose: this is whichever puppeteer-core build the runtime
+  // resolved, and its type differs between the local and serverless
+  // variants. Narrowing it here would be a fiction.
   puppeteer: any;
   executablePath: string;
   args: string[];

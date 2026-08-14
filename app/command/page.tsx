@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { serverDb } from '@/lib/services/context';
+import { resolveCommandDestination } from '@/lib/services/post-auth';
 import HomeNav from '@/components/bdm/HomeNav';
 import DemoDashboard from '@/components/bdm/DemoDashboard';
 
@@ -155,14 +156,20 @@ const FAQ = [
 ];
 
 export default async function CommandHomePage() {
-  // Signed-in visitors go straight to their businesses.
+  // Signed-in visitors go straight to their businesses. Where that is
+  // depends on how many they have — see resolveCommandDestination.
+  let destination: string | null = null;
   try {
     const db = serverDb();
     const { data } = await db.auth.getUser();
-    if (data.user) redirect('/command/portfolio');
+    if (data.user) destination = await resolveCommandDestination();
   } catch {
     // Not signed in, or Supabase env missing locally — render the page.
   }
+  // Outside the try: redirect() throws NEXT_REDIRECT by design, and
+  // catching it here would swallow the redirect and render the marketing
+  // page to a signed-in user instead.
+  if (destination) redirect(destination);
 
   const jsonLd = {
     '@context': 'https://schema.org',

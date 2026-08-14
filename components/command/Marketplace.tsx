@@ -99,7 +99,7 @@ function EmailCapture() {
   if (done) {
     return (
       <div className="glass-card border-brand-green/20 bg-brand-green/5 p-6 text-center">
-        <p className="font-semibold text-white">You're in.</p>
+        <p className="font-semibold text-white">You&rsquo;re in.</p>
         <p className="mt-1 text-sm text-zinc-400">Your email was saved locally in data/email-leads.jsonl.</p>
       </div>
     );

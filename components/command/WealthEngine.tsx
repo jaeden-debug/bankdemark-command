@@ -234,7 +234,7 @@ export default function WealthEngine() {
       {/* Target calculator */}
       <div className="glass-card p-5">
         <h3 className="font-semibold text-white mb-1">How much do I need to invest monthly?</h3>
-        <p className="text-xs text-zinc-500 mb-4">Enter a target and we'll calculate the required monthly contribution.</p>
+        <p className="text-xs text-zinc-500 mb-4">Enter a target and we&rsquo;ll calculate the required monthly contribution.</p>
         <div className="grid sm:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="cmd-label">Target Amount ($)</label>

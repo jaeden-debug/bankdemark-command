@@ -254,7 +254,7 @@ export default function ReportsPanel() {
             {snapshot.total_debt === 0 ? (
               <div className="text-center py-8">
                 <div className="text-4xl mb-3">🎉</div>
-                <h3 className="text-xl font-bold text-emerald-400 mb-2">You're Debt-Free!</h3>
+                <h3 className="text-xl font-bold text-emerald-400 mb-2">You&rsquo;re Debt-Free!</h3>
                 <p className="text-zinc-400 text-sm">No debt detected in your profile. Direct all freed-up cash flow to wealth building.</p>
               </div>
             ) : (

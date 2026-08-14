@@ -388,7 +388,7 @@ export default function DebtEngine() {
       {totalDebt === 0 && (
         <div className="glass-card p-8 text-center border-brand-green/20 bg-brand-green/5">
           <div className="text-4xl mb-3">🎉</div>
-          <h3 className="text-xl font-bold text-white mb-2">You're Debt-Free!</h3>
+          <h3 className="text-xl font-bold text-white mb-2">You&rsquo;re Debt-Free!</h3>
           <p className="text-zinc-400 text-sm mb-4">Incredible work. Now redirect your former debt payments into wealth-building investments.</p>
           <Link href="/command/wealth" className="cmd-btn-primary inline-block px-6 py-2.5 text-sm">Open Wealth Engine →</Link>
         </div>
